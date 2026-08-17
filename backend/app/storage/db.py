@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    event,
     func,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -37,6 +38,7 @@ class CourseORM(Base):
     messages = relationship("ChatMessageORM", back_populates="course", cascade="all,delete-orphan")
     chapters = relationship("ChapterORM", back_populates="course", cascade="all,delete-orphan", order_by="ChapterORM.sort_order")
     knowledge_points = relationship("KnowledgePointORM", back_populates="course", cascade="all,delete-orphan", order_by="KnowledgePointORM.sort_order")
+    ppt_records = relationship("PptRecordORM", back_populates="course", cascade="all,delete-orphan")
 
 
 class MaterialORM(Base):
@@ -121,7 +123,7 @@ class PptRecordORM(Base):
     stored_path = Column(String(500), default="")  # 上传文件路径
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    course = relationship("CourseORM", backref="ppt_records")
+    course = relationship("CourseORM", back_populates="ppt_records")
 
 
 class KnowledgePointORM(Base):
@@ -174,6 +176,14 @@ engine = create_async_engine(
     future=True,
 )
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+# 启用 SQLite 外键约束（SQLite 默认关闭）
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 async def init_db() -> None:

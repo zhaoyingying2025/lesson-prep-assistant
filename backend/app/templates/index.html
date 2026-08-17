@@ -258,6 +258,41 @@
     body.resizing * { user-select: none !important; cursor: col-resize !important; }
     body.resizing .resizer { cursor: col-resize !important; }
 
+    /* 垂直拖动分隔条（左侧栏内） */
+    .resizer-h {
+      flex-shrink: 0;
+      height: 6px;
+      cursor: row-resize;
+      background: transparent;
+      position: relative;
+      z-index: 20;
+      transition: background 0.15s;
+      touch-action: none;
+      margin: 0 -8px; /* 扩大点击区域 */
+    }
+    .resizer-h::before {
+      content: "";
+      position: absolute;
+      left: 8px; right: 8px;
+      top: 2px;
+      height: 2px;
+      background: var(--resizer-bg, rgba(46,125,110,0.2));
+      border-radius: 1px;
+      transition: all 0.2s;
+    }
+    .resizer-h:hover::before, .resizer-h.active::before {
+      top: 1px;
+      height: 4px;
+      background: var(--resizer-hover, rgba(46,125,110,0.6));
+      border-radius: 2px;
+    }
+    .resizer-h.active {
+      background: var(--accent-light, rgba(46,125,110,0.05));
+    }
+    body.resizing-v { cursor: row-resize !important; }
+    body.resizing-v * { user-select: none !important; cursor: row-resize !important; }
+    body.resizing-v .resizer-h { cursor: row-resize !important; }
+
     /* 教案预览表格 */
     .lesson-preview table.lesson-table {
       width: 100%;
@@ -925,22 +960,19 @@
         <div class="flex items-center justify-between">
           <div id="currentCourseName" class="font-serif font-semibold text-sm text-ink truncate flex-1"></div>
           <div class="relative">
-            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-1 ml-1" title="课程操作">
-              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 ml-1" title="课程操作">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
             </button>
             <!-- 三点下拉菜单 -->
             <div id="courseDropdown" class="hidden absolute right-0 top-full mt-1 z-[200] min-w-[160px] bg-white border border-teal-200/50 rounded-lg shadow-lg py-1" style="box-shadow: 0 8px 24px rgba(44,24,16,0.12);">
               <div class="menu-item" id="courseMenuAddChapter">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                 <span>新建章</span>
               </div>
               <div class="menu-item" id="courseMenuSmartExtract">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                 <span>一键知识点提取</span>
               </div>
               <div class="menu-divider"></div>
               <div class="menu-item" id="courseMenuMindmap">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-2a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1h-4z"/></svg>
                 <span>思维导图</span>
               </div>
             </div>
@@ -950,62 +982,77 @@
       </div>
 
       <!-- 章节树 -->
-      <div class="flex-1 overflow-y-auto px-2 py-2">
+      <div class="flex-1 overflow-y-auto px-2 py-2" id="chapterTreeSection">
         <div class="text-[10px] text-muted uppercase tracking-wider mb-1 px-1">章节结构</div>
         <div id="chapterTree" class="chapter-tree">
           <div class="text-xs text-muted text-center py-3">点击 + 新建第一章</div>
         </div>
       </div>
 
-      <!-- 教案记录 -->
-      <div class="border-t border-rule sidebar-section" data-section="lesson">
-        <div class="px-3 py-2 flex items-center justify-between">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
-          </div>
-          <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
-        </div>
-        <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
-        </div>
-      </div>
-      <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+      <!-- 垂直拖拽分隔条 -->
+      <div class="resizer-h" id="vResizer1"></div>
 
-      <!-- PPT记录 -->
-      <div class="border-t border-rule sidebar-section" data-section="ppt">
-        <div class="px-3 py-2 flex items-center justify-between">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
-          </div>
-          <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
-        </div>
-        <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
-        </div>
-      </div>
-      <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+      <!-- 下方区域整体包裹：当章节树区域高度固定时，此容器通过 flex-1 自然延伸填充剩余空间 -->
+      <div id="belowChapters" class="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-      <!-- 教材资源（紧凑折叠区） -->
-      <div class="border-t border-rule sidebar-section" data-section="material">
-        <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40" id="materialHeader">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
+        <!-- 教案记录 -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="lesson" id="lessonSection">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
           </div>
-          <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
+          <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
+            <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
+          </div>
         </div>
-        <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">请先选择课程</div>
+        <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+
+        <!-- 垂直拖拽分隔条 -->
+        <div class="resizer-h flex-shrink-0" id="vResizer2"></div>
+
+        <!-- PPT记录 -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="ppt" id="pptSection">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
+          </div>
+          <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
+            <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
+          </div>
         </div>
+        <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+
+        <!-- 垂直拖拽分隔条 -->
+        <div class="resizer-h flex-shrink-0" id="vResizer3"></div>
+
+        <!-- 教材资源（紧凑折叠区） -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0 flex-1 min-h-0 flex flex-col overflow-hidden" data-section="material" id="materialSection">
+          <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40 flex-shrink-0" id="materialHeader">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
+          </div>
+          <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1 flex-1 min-h-0">
+            <div class="text-xs text-muted text-center py-2">请先选择课程</div>
+          </div>
+        </div>
+
       </div>
+      <!-- /belowChapters 结束 -->
     </div>
   </aside>
 
@@ -1767,8 +1814,8 @@ async function loadCourses() {
            data-id="${c.id}" data-name="${escapeHtml(c.name)}">
         <div class="flex items-center justify-between">
           <div class="text-sm font-medium text-ink truncate flex-1">${escapeHtml(c.name)}</div>
-          <button class="course-menu-btn text-muted hover:text-ochre" data-course-id="${c.id}" title="更多">
-            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/></svg>
+          <button class="course-menu-btn text-muted hover:text-ochre p-0.5" data-course-id="${c.id}" title="更多">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/></svg>
           </button>
         </div>
         ${c.major ? `<div class="text-[10px] text-muted truncate">${escapeHtml(c.major)}</div>` : ''}
@@ -3605,6 +3652,223 @@ setupResizer('resizer2', 'previewPanel', 'middlePanel', {
   defaultSize: 420,
   minSize: 260,
   maxSize: 800,
+});
+
+// ==================== 左侧栏垂直拖拽调整区域高度 ====================
+function setupVerticalResizer(resizerId, aboveListId, belowSectionId, options = {}) {
+  // options: { storageKey, defaultAboveH, minAboveH, minBelowH, belowListId }
+  // aboveListId: 上方可调整高度的列表容器（如 lessonList）
+  // belowSectionId: 下方 section（用于计算最小高度约束）
+  // belowListId: 下方列表容器ID，不传则自动寻找 section 内第一个 overflow-y 元素
+  const resizer = document.getElementById(resizerId);
+  const aboveList = document.getElementById(aboveListId);
+  const belowSection = document.getElementById(belowSectionId);
+  if (!resizer || !aboveList) return;
+
+  const storageKey = options.storageKey;
+  const defaultAboveH = options.defaultAboveH || 160;
+  const minAboveH = options.minAboveH || 40;
+  const minBelowH = options.minBelowH || 60;
+
+  // 寻找下方列表容器
+  const belowList = options.belowListId
+    ? document.getElementById(options.belowListId)
+    : belowSection
+      ? belowSection.querySelector('.overflow-y-auto, [class*="max-h-"]') || belowSection.querySelector(':scope > div:last-child')
+      : null;
+
+  // 恢复保存的高度
+  if (storageKey) {
+    const savedH = localStorage.getItem(storageKey);
+    if (savedH) {
+      const h = parseInt(savedH);
+      if (!isNaN(h) && h > 30) {
+        aboveList.style.maxHeight = h + 'px';
+        aboveList.style.flex = 'none';
+      }
+    }
+  }
+
+  let isDragging = false;
+  let startY = 0;
+  let startAboveH = 0;
+  let startBelowH = 0;
+
+  function getHeight(el) {
+    return el.getBoundingClientRect().height;
+  }
+
+  function getSectionHeaderH(section) {
+    if (!section) return 0;
+    const header = section.querySelector(':scope > div:first-child');
+    return header ? header.getBoundingClientRect().height : 0;
+  }
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startAboveH = getHeight(aboveList);
+    startBelowH = belowList ? getHeight(belowList) : minBelowH;
+
+    resizer.classList.add('active');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('resizing-v');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dy = e.clientY - startY;
+    const aboveSection = aboveList.closest('.sidebar-section');
+    const container = aboveSection ? aboveSection.parentElement : aboveList.parentElement;
+
+    // 上方 section header 高度 + 下方 section header 高度
+    const aboveHeaderH = getSectionHeaderH(aboveSection);
+    const belowHeaderH = getSectionHeaderH(belowSection);
+
+    // 计算上下列表分别的 min/max 约束
+    const maxAboveH = startAboveH + startBelowH - minBelowH;
+    let newAboveH = Math.max(minAboveH, Math.min(maxAboveH, startAboveH + dy));
+    let newBelowH = startAboveH + startBelowH - newAboveH;
+
+    aboveList.style.maxHeight = newAboveH + 'px';
+    aboveList.style.flex = 'none';
+    if (belowList && newBelowH > 0) {
+      belowList.style.maxHeight = newBelowH + 'px';
+      belowList.style.flex = 'none';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    resizer.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.body.classList.remove('resizing-v');
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(Math.round(getHeight(aboveList))));
+    }
+  });
+
+  // 双击重置：恢复默认高度，下方列表也重置
+  resizer.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    aboveList.style.maxHeight = defaultAboveH + 'px';
+    aboveList.style.flex = 'none';
+    if (belowList) {
+      belowList.style.maxHeight = '';
+      belowList.style.flex = '';
+    }
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(defaultAboveH));
+    }
+  });
+}
+
+// 初始化左侧栏垂直拖拽
+// vResizer1: 章节树区域(上) vs 下方整体(下)
+// 下方整体已包裹在 #belowChapters (flex-1) 中，章节树固定高度时下方自然延伸填充
+(function() {
+  const resizer = document.getElementById('vResizer1');
+  const aboveSection = document.getElementById('chapterTreeSection');
+  const belowChapters = document.getElementById('belowChapters');
+  if (!resizer || !aboveSection || !belowChapters) return;
+
+  const storageKey = 'v_resizer1_h';
+  const defaultH = 220;
+  const minAboveH = 80;
+  // 下方最小总高度：确保下方三块内容+分隔条不被挤没
+  const minBelowH = 260;
+
+  // 恢复保存的高度
+  if (storageKey) {
+    const savedH = localStorage.getItem(storageKey);
+    if (savedH) {
+      const h = parseInt(savedH);
+      if (!isNaN(h) && h > 50) {
+        aboveSection.style.flex = `0 0 ${h}px`;
+        aboveSection.style.minHeight = minAboveH + 'px';
+      }
+    }
+  }
+
+  let isDragging = false;
+  let startY = 0;
+  let startH = 0;
+
+  function getHeight(el) { return el.getBoundingClientRect().height; }
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startH = getHeight(aboveSection);
+    // 切换为固定高度（belowChapters flex-1 自然填充剩余空间）
+    aboveSection.style.flex = `0 0 ${startH}px`;
+    aboveSection.style.transition = 'none';
+
+    resizer.classList.add('active');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('resizing-v');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dy = e.clientY - startY;
+    const parent = aboveSection.parentElement;
+    const totalH = getHeight(parent);
+    const resizerH = 6;
+
+    // 允许范围：[minAboveH, 总高度 - 下方最小总高度 - 分隔条高度]
+    const maxAboveH = totalH - minBelowH - resizerH;
+    let newH = startH + dy;
+    newH = Math.max(minAboveH, Math.min(maxAboveH, newH));
+
+    aboveSection.style.flex = `0 0 ${newH}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    aboveSection.style.transition = '';
+    resizer.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.body.classList.remove('resizing-v');
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(Math.round(getHeight(aboveSection))));
+    }
+  });
+
+  // 双击重置：恢复章节树为 flex-1
+  resizer.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    aboveSection.style.flex = '';
+    aboveSection.style.maxHeight = '';
+    aboveSection.style.minHeight = '';
+    if (storageKey) localStorage.removeItem(storageKey);
+  });
+})();
+
+// vResizer2: 教案列表(上) vs PPT列表(下) — 显式指定下方列表ID，双向同步调整高度
+setupVerticalResizer('vResizer2', 'lessonList', 'pptSection', {
+  storageKey: 'v_resizer2_h',
+  defaultAboveH: 140,
+  minAboveH: 60,
+  minBelowH: 80,
+  belowListId: 'pptList',
+});
+
+// vResizer3: PPT列表(上) vs 教材列表(下) — 显式指定下方列表ID，双向同步调整高度
+setupVerticalResizer('vResizer3', 'pptList', 'materialSection', {
+  storageKey: 'v_resizer3_h',
+  defaultAboveH: 120,
+  minAboveH: 60,
+  minBelowH: 80,
+  belowListId: 'materialList',
 });
 
 // ==================== 主题切换下拉菜单 ====================

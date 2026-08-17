@@ -118,9 +118,41 @@ async def get_course(course_id: int):
 @router.delete("/courses/{course_id}")
 async def delete_course(course_id: int):
     async for session in get_session():
-        course = await session.get(CourseORM, course_id)
+        course = await session.get(
+            CourseORM,
+            course_id,
+            options=[
+                selectinload(CourseORM.materials),
+                selectinload(CourseORM.ppt_records),
+            ],
+        )
         if not course:
             raise HTTPException(404, "课程不存在")
+
+        # 1. 先删除上传的文件（教材、PPT存储文件）
+        from ..config import settings
+        base_dir = Path(settings.upload_dir) if settings.upload_dir else Path(__file__).resolve().parent.parent.parent / "uploads"
+
+        for mat in course.materials or []:
+            if mat.stored_path:
+                p = Path(mat.stored_path)
+                # 仅删除 uploads 目录下的文件，避免误删
+                try:
+                    if p.exists() and base_dir in p.resolve().parents:
+                        p.unlink()
+                except Exception:
+                    pass
+
+        for ppt in course.ppt_records or []:
+            if ppt.stored_path:
+                p = Path(ppt.stored_path)
+                try:
+                    if p.exists() and base_dir in p.resolve().parents:
+                        p.unlink()
+                except Exception:
+                    pass
+
+        # 2. 使用 SQLAlchemy 级联删除
         await session.delete(course)
         await session.commit()
         return ApiResponse(message="课程已删除")
