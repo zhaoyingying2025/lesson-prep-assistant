@@ -612,9 +612,3 @@ def export_teaching_pptx(
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
-
-
-# 兼容旧接口（保留原有导出函数，但标记为deprecated）
-def export_pptx(plan) -> bytes:
-    """[已废弃] 使用 export_teaching_pptx 替代"""
-    raise DeprecationWarning("请使用 export_teaching_pptx(slide_data, style) 替代")

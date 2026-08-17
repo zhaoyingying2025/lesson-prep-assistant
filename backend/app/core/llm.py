@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 
@@ -237,30 +237,6 @@ class LLMClient:
         """对话调用并解析JSON结果"""
         text = await self.chat(system_prompt, user_prompt, temperature=temperature)
         return parse_json_loose(text)
-
-    async def stream_chat(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[str]:
-        """流式对话，逐块返回文本增量"""
-        try:
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=self.max_tokens,
-                stream=True,
-            )
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        except Exception as e:
-            raise LLMError(f"LLM流式调用失败: {e}") from e
 
 
 def parse_json_loose(text: str) -> dict | list:

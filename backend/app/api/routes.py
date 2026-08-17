@@ -1279,30 +1279,6 @@ async def chat_modify_lesson(lesson_id: int, payload: ChatRequest):
         )
 
 
-@router.get("/courses/{course_id}/messages")
-async def list_messages(course_id: int, limit: int = 50):
-    async for session in get_session():
-        result = await session.execute(
-            select(ChatMessageORM)
-            .where(ChatMessageORM.course_id == course_id)
-            .order_by(ChatMessageORM.created_at.desc())
-            .limit(limit)
-        )
-        msgs = list(reversed(result.scalars().all()))
-        return ApiResponse(
-            data=[
-                {
-                    "id": m.id,
-                    "role": m.role,
-                    "content": m.content,
-                    "metadata": m.metadata_json,
-                    "created_at": m.created_at.isoformat() if m.created_at else None,
-                }
-                for m in msgs
-            ]
-        )
-
-
 # ============================================================
 # 导出
 # ============================================================

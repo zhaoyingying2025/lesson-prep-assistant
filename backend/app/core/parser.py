@@ -298,11 +298,6 @@ def _detect_page_number_from_blocks(page) -> int | None:
     return None
 
 
-def _detect_page_number(first_line: str) -> int | None:
-    """从页面首行文本中检测实际印刷页码（兼容旧版，推荐使用 _detect_page_number_from_blocks）"""
-    return _detect_page_number_from_text(first_line)
-
-
 def _infer_page_numbers(pages: list[dict]) -> list[dict]:
     """推断缺失的页码，基于已知页码进行线性插值"""
     import re
