@@ -9,6 +9,8 @@
   <!-- markmap 思维导图 -->
   <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.16.3/dist/browser/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.16.3/dist/browser/index.js"></script>
+  <!-- cytoscape 知识图谱 (借鉴 leo-live-book) -->
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -257,6 +259,41 @@
     body.resizing { cursor: col-resize !important; }
     body.resizing * { user-select: none !important; cursor: col-resize !important; }
     body.resizing .resizer { cursor: col-resize !important; }
+
+    /* 垂直拖动分隔条（左侧栏内） */
+    .resizer-h {
+      flex-shrink: 0;
+      height: 6px;
+      cursor: row-resize;
+      background: transparent;
+      position: relative;
+      z-index: 20;
+      transition: background 0.15s;
+      touch-action: none;
+      margin: 0 -8px; /* 扩大点击区域 */
+    }
+    .resizer-h::before {
+      content: "";
+      position: absolute;
+      left: 8px; right: 8px;
+      top: 2px;
+      height: 2px;
+      background: var(--resizer-bg, rgba(46,125,110,0.2));
+      border-radius: 1px;
+      transition: all 0.2s;
+    }
+    .resizer-h:hover::before, .resizer-h.active::before {
+      top: 1px;
+      height: 4px;
+      background: var(--resizer-hover, rgba(46,125,110,0.6));
+      border-radius: 2px;
+    }
+    .resizer-h.active {
+      background: var(--accent-light, rgba(46,125,110,0.05));
+    }
+    body.resizing-v { cursor: row-resize !important; }
+    body.resizing-v * { user-select: none !important; cursor: row-resize !important; }
+    body.resizing-v .resizer-h { cursor: row-resize !important; }
 
     /* 教案预览表格 */
     .lesson-preview table.lesson-table {
@@ -892,6 +929,10 @@
       </div>
     </div>
     <span id="modelBadge" class="text-xs text-muted">模型: <span class="text-teal-600 font-medium">未配置</span></span>
+    <button id="tutorialBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="新手教程">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span>新手教程</span>
+    </button>
     <button id="settingsBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="LLM 设置">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
       <span>设置</span>
@@ -922,90 +963,92 @@
       <!-- 课程标题栏 -->
       <div class="px-3 py-2 border-b border-rule">
         <div class="text-[10px] text-muted mb-0.5">当前课程</div>
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-2">
           <div id="currentCourseName" class="font-serif font-semibold text-sm text-ink truncate flex-1"></div>
-          <div class="relative">
-            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-1 ml-1" title="课程操作">
-              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+          <div class="relative flex gap-2 items-center flex-shrink-0">
+            <button id="smartExtractBtn" class="btn-ghost px-2 py-1 text-xs rounded flex items-center gap-1" title="一键提取知识点（选择教材）" disabled>
+              <span>📖</span><span>提知</span>
             </button>
-            <!-- 三点下拉菜单 -->
-            <div id="courseDropdown" class="hidden absolute right-0 top-full mt-1 z-[200] min-w-[160px] bg-white border border-teal-200/50 rounded-lg shadow-lg py-1" style="box-shadow: 0 8px 24px rgba(44,24,16,0.12);">
-              <div class="menu-item" id="courseMenuAddChapter">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                <span>新建章</span>
-              </div>
-              <div class="menu-item" id="courseMenuSmartExtract">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-                <span>一键知识点提取</span>
-              </div>
-              <div class="menu-divider"></div>
-              <div class="menu-item" id="courseMenuMindmap">
-                <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-2a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1h-4z"/></svg>
-                <span>思维导图</span>
-              </div>
-            </div>
+            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5" title="新建章">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            </button>
           </div>
         </div>
         <div id="currentCourseMeta" class="text-[11px] text-muted mt-0.5"></div>
       </div>
 
       <!-- 章节树 -->
-      <div class="flex-1 overflow-y-auto px-2 py-2">
+      <div class="flex-1 overflow-y-auto px-2 py-2" id="chapterTreeSection">
         <div class="text-[10px] text-muted uppercase tracking-wider mb-1 px-1">章节结构</div>
         <div id="chapterTree" class="chapter-tree">
           <div class="text-xs text-muted text-center py-3">点击 + 新建第一章</div>
         </div>
       </div>
 
-      <!-- 教案记录 -->
-      <div class="border-t border-rule sidebar-section" data-section="lesson">
-        <div class="px-3 py-2 flex items-center justify-between">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
-          </div>
-          <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
-        </div>
-        <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
-        </div>
-      </div>
-      <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+      <!-- 垂直拖拽分隔条 -->
+      <div class="resizer-h" id="vResizer1"></div>
 
-      <!-- PPT记录 -->
-      <div class="border-t border-rule sidebar-section" data-section="ppt">
-        <div class="px-3 py-2 flex items-center justify-between">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
-          </div>
-          <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
-        </div>
-        <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
-        </div>
-      </div>
-      <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+      <!-- 下方区域整体包裹：当章节树区域高度固定时，此容器通过 flex-1 自然延伸填充剩余空间 -->
+      <div id="belowChapters" class="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-      <!-- 教材资源（紧凑折叠区） -->
-      <div class="border-t border-rule sidebar-section" data-section="material">
-        <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40" id="materialHeader">
-          <div class="flex items-center gap-1 flex-1 min-w-0">
-            <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-            <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
+        <!-- 教案记录 -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="lesson" id="lessonSection">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
           </div>
-          <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          </button>
+          <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
+            <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
+          </div>
         </div>
-        <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-          <div class="text-xs text-muted text-center py-2">请先选择课程</div>
+        <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+
+        <!-- 垂直拖拽分隔条 -->
+        <div class="resizer-h flex-shrink-0" id="vResizer2"></div>
+
+        <!-- PPT记录 -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="ppt" id="pptSection">
+          <div class="px-3 py-2 flex items-center justify-between">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
+          </div>
+          <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
+            <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
+          </div>
         </div>
+        <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+
+        <!-- 垂直拖拽分隔条 -->
+        <div class="resizer-h flex-shrink-0" id="vResizer3"></div>
+
+        <!-- 教材资源（紧凑折叠区） -->
+        <div class="border-t border-rule sidebar-section flex-shrink-0 flex-1 min-h-0 flex flex-col overflow-hidden" data-section="material" id="materialSection">
+          <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40 flex-shrink-0" id="materialHeader">
+            <div class="flex items-center gap-1 flex-1 min-w-0">
+              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
+            </div>
+            <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            </button>
+          </div>
+          <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1 flex-1 min-h-0">
+            <div class="text-xs text-muted text-center py-2">请先选择课程</div>
+          </div>
+        </div>
+
       </div>
+      <!-- /belowChapters 结束 -->
     </div>
   </aside>
 
@@ -1027,6 +1070,10 @@
       <button id="lessonParamsBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap" title="教案参数配置">
         ⚙ 参数
       </button>
+      <label class="flex items-center gap-1 text-[10px] text-muted cursor-pointer select-none whitespace-nowrap" title="启用 ADDIE 多智能体审议：学情分析→生成→自评→精修，质量更高但耗时更长">
+        <input id="addieModeCheckbox" type="checkbox" class="w-3 h-3 accent-teal-600">
+        <span>ADDIE审议</span>
+      </label>
       <button id="genLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
         ② 生成教案
       </button>
@@ -1041,6 +1088,7 @@
         <div>
           <label class="text-muted block mb-1">课时时长（分钟）</label>
           <select id="paramTotalMinutes" class="input-ink w-full px-2 py-1 rounded text-xs">
+            <option value="15">15 分钟（微课）</option>
             <option value="30">30 分钟（短课）</option>
             <option value="45">45 分钟（标准）</option>
             <option value="60">60 分钟（双节）</option>
@@ -1119,6 +1167,8 @@
       <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-teal-50/95 backdrop-blur-sm">
         <h3 class="text-xs font-semibold text-teal-700">📚 已提取知识点 <span id="kpCount" class="ml-1 text-teal-600"></span></h3>
         <div class="flex items-center gap-2">
+          <button id="knowledgeGraphBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="打开知识图谱视图">📊 知识图谱</button>
+          <button id="exportKpXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="按模板导出知识点到XLSX">📥 导出XLSX</button>
           <button id="addKpBtn" class="text-teal-600 hover:bg-teal-100 rounded px-2 py-0.5 text-xs" title="手动新增知识点">+ 新增</button>
           <button id="closeKp" class="text-teal-600 hover:text-teal-800 text-xs">×</button>
         </div>
@@ -1126,9 +1176,32 @@
       <div id="kpContainer" class="px-4 py-2 grid grid-cols-1 gap-1.5"></div>
     </div>
 
+    <!-- 对话记录标签（按课程保留） -->
+    <div class="flex-shrink-0 px-4 py-1 bg-teal-50/60 border-b border-rule text-[10px] text-muted text-center">
+      💬 对话记录（按课程保留）
+    </div>
+
     <!-- 对话消息流 -->
     <div id="chatStream" class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-      <div class="text-center text-xs text-muted py-6">
+      <div id="tutorialGuideCard" class="hidden tutorial-card bg-white/90 rounded-xl border border-teal-200 shadow-soft p-4 fade-in">
+        <div class="font-serif font-semibold text-base text-teal-700 mb-2 flex items-center gap-2">
+          <span>🎉 8步上手备课助手</span>
+        </div>
+        <ol class="space-y-1.5 text-xs text-ink-2 leading-relaxed list-decimal pl-5">
+          <li>左栏「课程空间」→ 点击 + 新建课程</li>
+          <li>选择课程后，当前课程旁点「+」新建章</li>
+          <li>顶部「上传教材」时选择教材类型（课程标准/教科书/教参/练习题/论文/其他）</li>
+          <li>点当前课程旁「📖提知」按钮，勾选教材后一键提取知识点</li>
+          <li>选中章节后点「①提取知识点」完成章节知识映射</li>
+          <li>点「②生成教案」按钮，AI 按模板生成全表格教案</li>
+          <li>在中间对话框对教案提修改意见，微调内容</li>
+          <li>点「③生成PPT」导出课件</li>
+        </ol>
+        <div class="flex justify-end mt-3">
+          <button id="tutorialGuideCloseBtn" class="btn-primary px-3 py-1 rounded text-xs">知道了</button>
+        </div>
+      </div>
+      <div id="chatEmptyState" class="text-center text-xs text-muted py-6">
         <div class="font-serif text-base text-teal-700 mb-1">备课助手 · 智能备课伴侣</div>
         <div>遵循"宏观→微观"备课逻辑，按 ① 提取知识点 → ② 生成教案 → ③ 对话微调 顺序操作</div>
       </div>
@@ -1148,6 +1221,7 @@
       <div class="flex items-center justify-between mt-1.5 px-1">
         <div class="text-[10px] text-muted">提示：⏎ 发送 / Shift+⏎ 换行</div>
         <div class="flex gap-2">
+          <button id="evaluateLessonBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled title="多指标打分 + 双视角评审 (借鉴 instructional_agents)">🔍 评估教案</button>
           <button id="exportMdBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 Markdown</button>
           <button id="exportDocxBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 DOCX</button>
         </div>
@@ -1160,9 +1234,13 @@
 
   <!-- ====== 右栏：教案预览 ====== -->
   <aside id="previewPanel" class="flex-shrink-0 bg-white/70 backdrop-blur-sm flex flex-col" style="flex: 0 0 420px; min-width: 260px; max-width: 800px;">
-    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between">
-      <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">教案预览</h2>
-      <span id="previewMeta" class="text-[11px] text-muted"></span>
+    <div class="flex-shrink-0 px-3 py-2.5 border-b border-rule flex items-center justify-between gap-2">
+      <h2 class="text-xs font-semibold text-muted uppercase tracking-wider whitespace-nowrap">教案预览</h2>
+      <div class="flex items-center gap-1.5 min-w-0">
+        <span id="previewMeta" class="text-[11px] text-muted truncate"></span>
+        <button id="openTemplateLibraryBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="打开教案模板库">📝 模板库</button>
+        <button id="fullscreenPreviewBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="全屏预览/编辑教案">🔍 全屏</button>
+      </div>
     </div>
     <div id="previewContent" class="flex-1 overflow-y-auto px-4 py-3 lesson-preview text-sm">
       <div class="text-center text-xs text-muted py-10">
@@ -1188,6 +1266,114 @@
         <input id="newCourseMajor" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机科学与技术">
       </div>
       <div>
+        <label class="text-xs text-muted block mb-1">学科领域（用于AI定制生成）</label>
+        <select id="newCourseSubject" class="input-ink w-full px-3 py-2 rounded-md text-sm">
+          <option value="">通用（不指定学科）</option>
+          <optgroup label="━ 中小学 ─">
+            <option value="chinese">语文</option>
+            <option value="math">数学</option>
+            <option value="english">英语</option>
+            <option value="physics">物理</option>
+            <option value="chemistry">化学</option>
+            <option value="biology">生物</option>
+            <option value="history">历史</option>
+            <option value="geography">地理</option>
+            <option value="politics">政治</option>
+            <option value="it">信息技术</option>
+          </optgroup>
+          <optgroup label="━ 理学 ─">
+            <option value="applied_math">应用数学</option>
+            <option value="statistics">统计学</option>
+            <option value="psychology">心理学</option>
+            <option value="ecology">生态学</option>
+          </optgroup>
+          <optgroup label="━ 工学 ─">
+            <option value="cs">计算机科学与技术</option>
+            <option value="software_eng">软件工程</option>
+            <option value="ai">人工智能</option>
+            <option value="data_science">数据科学</option>
+            <option value="electronic_info">电子信息工程</option>
+            <option value="communication">通信工程</option>
+            <option value="automation">自动化</option>
+            <option value="mechanical">机械工程</option>
+            <option value="civil_eng">土木工程</option>
+            <option value="architecture">建筑学</option>
+            <option value="materials_sci">材料科学与工程</option>
+            <option value="electrical_eng">电气工程</option>
+            <option value="environmental_eng">环境工程</option>
+            <option value="biomedical_eng">生物医学工程</option>
+            <option value="cybersecurity">网络安全</option>
+          </optgroup>
+          <optgroup label="━ 医学 ─">
+            <option value="clinical_med">临床医学</option>
+            <option value="basic_med">基础医学</option>
+            <option value="pharmacy">药学</option>
+            <option value="nursing">护理学</option>
+            <option value="stomatology">口腔医学</option>
+            <option value="tcm">中医学</option>
+            <option value="public_health">公共卫生</option>
+          </optgroup>
+          <optgroup label="━ 法学 ─">
+            <option value="law">法学</option>
+            <option value="sociology">社会学</option>
+            <option value="political_sci">政治学与行政学</option>
+          </optgroup>
+          <optgroup label="━ 经济学 ─">
+            <option value="economics">经济学</option>
+            <option value="finance">金融学</option>
+            <option value="fiscal">财政学</option>
+            <option value="intl_trade">国际经济与贸易</option>
+            <option value="insurance">保险学</option>
+          </optgroup>
+          <optgroup label="━ 管理学 ─">
+            <option value="business_admin">工商管理</option>
+            <option value="accounting">会计学</option>
+            <option value="financial_mgmt">财务管理</option>
+            <option value="marketing">市场营销</option>
+            <option value="public_admin">公共管理</option>
+            <option value="info_mgmt">信息管理与信息系统</option>
+            <option value="ecommerce">电子商务</option>
+            <option value="logistics">物流管理</option>
+          </optgroup>
+          <optgroup label="━ 文学 ─">
+            <option value="chinese_lit">中国语言文学</option>
+            <option value="foreign_lit">外国语言文学</option>
+            <option value="journalism">新闻传播学</option>
+            <option value="advertising">广告学</option>
+            <option value="japanese">日语</option>
+          </optgroup>
+          <optgroup label="━ 教育学 ─">
+            <option value="education">教育学</option>
+            <option value="preschool_edu">学前教育</option>
+            <option value="edtech">教育技术学</option>
+            <option value="pe">体育教育</option>
+          </optgroup>
+          <optgroup label="━ 艺术学 ─">
+            <option value="art_design">艺术设计</option>
+            <option value="music">音乐学</option>
+            <option value="fine_arts">美术学</option>
+            <option value="dance">舞蹈学</option>
+            <option value="digital_media">数字媒体艺术</option>
+          </optgroup>
+          <optgroup label="━ 农学 ─">
+            <option value="agriculture">农学</option>
+            <option value="forestry">林学</option>
+            <option value="horticulture">园艺学</option>
+            <option value="animal_sci">动物科学</option>
+          </optgroup>
+          <optgroup label="━ 历史学 ─">
+            <option value="archaeology">考古学</option>
+            <option value="museology">文物与博物馆学</option>
+          </optgroup>
+          <optgroup label="━ 哲学 ─">
+            <option value="philosophy">哲学</option>
+            <option value="logic">逻辑学</option>
+          </optgroup>
+          <option value="other">其他</option>
+        </select>
+        <div class="text-xs text-muted mt-1">提示：选定学科后，AI生成教案/PPT/知识点时会按该学科规范注入提示词</div>
+      </div>
+      <div>
         <label class="text-xs text-muted block mb-1">课程描述</label>
         <textarea id="newCourseDesc" rows="2" class="input-ink w-full px-3 py-2 rounded-md text-sm resize-none" placeholder="可选"></textarea>
       </div>
@@ -1203,6 +1389,35 @@
 <div id="uploadModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
   <div class="bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
     <h3 class="font-serif font-bold text-base mb-3 text-ink">上传教材资源</h3>
+    <div class="mb-3">
+      <div class="text-xs text-muted mb-2">📚 先选择教材类型（便于AI针对性识别）</div>
+      <div id="materialTypeRadioGroup" class="grid grid-cols-3 gap-2">
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="syllabus">
+          <span class="text-purple-700 font-medium">课程标准/大纲</span>
+        </label>
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="textbook">
+          <span class="text-green-700 font-medium">教科书</span>
+        </label>
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="reference">
+          <span class="text-blue-700 font-medium">教参教辅</span>
+        </label>
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="exercise_book">
+          <span class="text-orange-700 font-medium">练习题册</span>
+        </label>
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="paper">
+          <span class="text-pink-700 font-medium">学术论文</span>
+        </label>
+        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="other" checked>
+          <span class="text-gray-700 font-medium">自动识别/其他</span>
+        </label>
+      </div>
+    </div>
     <div id="dropZone" class="drop-zone border-2 border-dashed border-teal-300 rounded-lg p-6 text-center cursor-pointer hover:border-teal-500">
       <svg class="w-10 h-10 mx-auto text-teal-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
       <div class="text-sm text-ink mb-1">点击选择文件或拖拽到此处</div>
@@ -1210,6 +1425,19 @@
       <input id="fileInput" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md">
     </div>
     <div id="fileList" class="mt-3 space-y-1 max-h-32 overflow-y-auto"></div>
+    <!-- 多教材版本管理：版本标签 + 主教材勾选（同课程仅一本主教材，AI生成时优先检索） -->
+    <div class="mt-3 grid grid-cols-2 gap-2">
+      <div>
+        <label class="text-xs text-muted block mb-1">教材版本标签</label>
+        <input id="versionLabelInput" type="text" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" placeholder="如 人教版/高教版/清华版" maxlength="100">
+      </div>
+      <div class="flex items-end pb-1">
+        <label class="flex items-center gap-1.5 text-xs text-ink cursor-pointer select-none">
+          <input id="isPrimaryCheckbox" type="checkbox" class="w-3.5 h-3.5 accent-teal-600">
+          <span>设为主教材 <span class="text-muted text-[10px]">(AI优先检索)</span></span>
+        </label>
+      </div>
+    </div>
     <div class="flex justify-end gap-2 mt-4">
       <button id="cancelUpload" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
       <button id="confirmUpload" class="btn-primary px-3 py-1.5 rounded-md text-sm" disabled>开始上传</button>
@@ -1442,7 +1670,7 @@
 </div>
 
 <!-- ========== 通用模态框：输入(prompt 替代) ========== -->
-<div id="promptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[60] hidden items-center justify-center">
+<div id="promptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
   <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
     <h3 id="promptTitle" class="font-serif font-bold text-base mb-3 text-ink">请输入</h3>
     <input id="promptInput" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="">
@@ -1454,7 +1682,7 @@
 </div>
 
 <!-- ========== 通用模态框：确认(confirm 替代) ========== -->
-<div id="confirmModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[60] hidden items-center justify-center">
+<div id="confirmModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
   <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
     <h3 id="confirmTitle" class="font-serif font-bold text-base mb-3 text-ink">确认操作</h3>
     <p id="confirmMessage" class="text-sm text-ink-2 whitespace-pre-line leading-relaxed mb-1"></p>
@@ -1465,9 +1693,331 @@
   </div>
 </div>
 
+<!-- ========== 学科选择模态框 ========== -->
+<div id="subjectPickerModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
+  <div class="bg-white rounded-xl shadow-md-soft w-[480px] p-5 fade-in">
+    <h3 id="subjectPickerTitle" class="font-serif font-bold text-base mb-3 text-ink">选择学科领域</h3>
+    <p class="text-xs text-muted mb-3">选定后将影响 AI 生成教案、PPT、知识点时的学科规范注入</p>
+    <select id="subjectPickerSelect" class="input-ink w-full px-3 py-2 rounded-md text-sm" size="12">
+    </select>
+    <div class="flex justify-end gap-2 mt-4">
+      <button id="subjectPickerCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+      <button id="subjectPickerOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== F1: 教案全屏编辑/预览模态框 ========== -->
+<div id="fullscreenLessonModal" class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-[90] hidden items-center justify-center">
+  <div class="bg-paper rounded-xl shadow-md-soft w-[95vw] max-w-[1200px] h-[90vh] flex flex-col fade-in overflow-hidden">
+    <!-- Header -->
+    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
+      <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
+        📄 教案全屏编辑
+        <span id="fullscreenLessonSubtitle" class="text-xs text-muted font-normal ml-2"></span>
+      </h3>
+      <div class="flex items-center gap-1.5">
+        <button id="toggleEditBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="切换编辑/预览模式">
+          <span class="edit-icon">✏️</span>
+          <span class="edit-label">编辑</span>
+        </button>
+        <button id="saveLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm" title="保存修改">💾 保存</button>
+        <button id="closeFullscreenBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭">✕ 关闭</button>
+      </div>
+    </div>
+    <!-- Dirty 提示条 -->
+    <div id="fullscreenDirtyBar" class="hidden flex-shrink-0 px-4 py-1 bg-amber-100 text-amber-700 text-[11px] text-center border-b border-amber-300">
+      ⚠ 有未保存的修改，请点击"保存"以保留
+    </div>
+    <!-- Body -->
+    <div id="fullscreenLessonBody" class="flex-1 overflow-y-auto px-6 py-4 lesson-preview text-sm bg-white">
+      <!-- 由 openFullscreenLesson() 动态渲染 -->
+    </div>
+  </div>
+</div>
+
+<!-- ========== 教案评估结果模态框（借鉴 instructional_agents：多指标打分 + 双视角评审） ========== -->
+<div id="lessonEvalModal" class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-[95] hidden items-center justify-center">
+  <div class="bg-paper rounded-xl shadow-md-soft w-[92vw] max-w-[1000px] h-[88vh] flex flex-col fade-in overflow-hidden">
+    <!-- Header -->
+    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
+      <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
+        🔍 教案质量评估报告
+        <span id="evalModalSubtitle" class="text-xs text-muted font-normal ml-2"></span>
+      </h3>
+      <div class="flex items-center gap-1.5">
+        <button id="evalCopyBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="复制评估报告为 Markdown">📋 复制报告</button>
+        <button id="closeEvalModalBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭">✕ 关闭</button>
+      </div>
+    </div>
+    <!-- Body -->
+    <div id="evalModalBody" class="flex-1 overflow-y-auto px-6 py-4 text-sm bg-white space-y-4">
+      <!-- 由 renderLessonEvaluation() 动态渲染 -->
+      <div class="text-center text-xs text-muted py-10">点击"评估教案"按钮开始评估</div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== Toast 提示 ========== -->
 <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] hidden">
   <div id="toastBody" class="bg-ink/90 text-white text-sm px-4 py-2 rounded-lg shadow-md-soft"></div>
+</div>
+
+<!-- ========== G1: 新手教程模态框 ========== -->
+<div id="tutorialModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
+  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[42rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
+    <div class="modal-header flex items-center justify-between mb-3">
+      <h3 class="font-serif font-bold text-base text-ink">📖 备课助手 · 详细使用教程</h3>
+      <button class="tutorial-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+    </div>
+    <div class="modal-body space-y-4 text-xs text-ink-2 leading-relaxed">
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">1. 新建课程空间</h4>
+        <p><b class="text-ink">前置条件：</b>打开应用首页。</p>
+        <p><b class="text-ink">操作：</b>在左栏「课程空间」标题右侧点击 + 按钮，输入课程名、专业、描述，点击"创建"。</p>
+        <p><b class="text-ink">预期：</b>列表中出现新课程并自动高亮，下方章节树、教材区激活。</p>
+        <p><b class="text-ink">常见错误：</b>课程名为空 → 无法创建；点击列表不生效 → 先关闭上下文菜单。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">2. +新建章，搭建章节结构</h4>
+        <p><b class="text-ink">前置条件：</b>已有当前课程被选中。</p>
+        <p><b class="text-ink">操作：</b>当前课程标题栏右侧点击「+」按钮，或在章节树节点菜单里选择"新增子节/重命名/删除"。</p>
+        <p><b class="text-ink">预期：</b>章节树出现新建章/节，支持多层级折叠展开。</p>
+        <p><b class="text-ink">常见错误：</b>选中某章后点击+仍建在根 → 注意按钮上下文是课程级"新建章"。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">3. 上传教材并预选类型</h4>
+        <p><b class="text-ink">前置条件：</b>当前课程已激活。</p>
+        <p><b class="text-ink">操作：</b>左下"教材资源"区点击↑按钮 → 先选择教材类型（6 类 + 自动识别）→ 拖放或点选文件 → 开始上传。</p>
+        <p><b class="text-ink">预期：</b>教材列表中出现对应文件，并显示彩色类型 badge / 大小 / 字数。</p>
+        <p><b class="text-ink">常见错误：</b>文件过大或扫描版PDF导致解析失败 → 转 DOCX / OCR 后重传。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">4. 一键提取知识点 & 联网校验准确性</h4>
+        <p><b class="text-ink">前置条件：</b>课程下已上传教材。</p>
+        <p><b class="text-ink">操作：</b>当前课程标题栏点击「📖提知」→ 勾选要提取的教材（可多选）→ 确定 → 等待进度完成。</p>
+        <p><b class="text-ink">预期：</b>toast 提示新增知识点数，可在弹窗选择"立即导出XLSX"。</p>
+        <p><b class="text-ink">常见错误：</b>返回空 → 请检查教材为文字版且不要一次性选择过多。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">5. 章节条①：章节级提取知识点</h4>
+        <p><b class="text-ink">前置条件：</b>已新建章节或填入章节名。</p>
+        <p><b class="text-ink">操作：</b>在中间章节输入条填写章节 → 点击"① 提取知识点"。</p>
+        <p><b class="text-ink">预期：</b>知识点面板展开，可手动改层级/重点/难点/考点。</p>
+        <p><b class="text-ink">常见错误：</b>章节名为空 → 提示先填写章节。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">6. 章节条②：选择模板并生成教案</h4>
+        <p><b class="text-ink">前置条件：</b>知识点面板至少有 1 个知识点。</p>
+        <p><b class="text-ink">操作：</b>点击"⚙ 参数"配置课时/风格/作业分层等 → 点击"② 生成教案"。（可在模板库中维护默认模板 JSON）</p>
+        <p><b class="text-ink">预期：</b>右侧预览区出现全表格化六阶段教案，教案记录列表同步增加。</p>
+        <p><b class="text-ink">常见错误：</b>结构不完整 → 使用失败对话框的"模板填充"或"降参重试"补救。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">7. 中间对话框③：对话微调教案细节</h4>
+        <p><b class="text-ink">前置条件：</b>已生成一份教案。</p>
+        <p><b class="text-ink">操作：</b>在底部对话框输入修改意见，如"导入换案例、缩短讲解到30分钟、增加互动"，回车发送。</p>
+        <p><b class="text-ink">预期：</b>AI 回显调整并刷新右栏教案预览；可导出 MD/DOCX。</p>
+        <p><b class="text-ink">常见错误：</b>发送按钮禁用 → 必须先有 currentLessonId（成功生成过教案）。</p>
+      </section>
+      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
+        <h4 class="font-semibold text-teal-700 mb-1">8. 生成PPT并导出</h4>
+        <p><b class="text-ink">前置条件：</b>当前存在已生成教案。</p>
+        <p><b class="text-ink">操作：</b>点击"③ 生成PPT" → 选择风格/密度/配图方式 → 生成并导出。</p>
+        <p><b class="text-ink">预期：</b>浏览器自动下载 .pptx，左下 PPT 记录列表新增一项。</p>
+        <p><b class="text-ink">常见错误：</b>打开显示空白 → 升级 PowerPoint/WPS 或降低密度重生成。</p>
+      </section>
+
+      <div class="bg-ochre/5 border border-ochre/20 rounded-lg p-3">
+        <h4 class="font-semibold text-ochre mb-2">❓ Q&A 常见问题</h4>
+        <div class="space-y-2">
+          <div><b class="text-ink">Q1: LLM未配置或报错怎么办？</b><br>A. 点右上角「设置」→ 填入 APIKey + BaseURL + Model → 点"测试连接"确认通过后再操作。</div>
+          <div><b class="text-ink">Q2: 教材解析失败（空/乱码）怎么办？</b><br>A. 先转 PDF 或另存为 DOCX；扫描件需先 OCR；若仍失败请联系管理员并带上文件名。</div>
+          <div><b class="text-ink">Q3: 一键提取知识点返回空？</b><br>A. 检查教材是否为文字版（非扫描图片）；或减少一次性勾选的教材数量后重跑。</div>
+          <div><b class="text-ink">Q4: 教案生成失败或结构不完整？</b><br>A. 在失败对话框选择"重试"或"降参重试"；或点"用模板快速填充"兜底。</div>
+          <div><b class="text-ink">Q5: PPT文件打开显示空白或加载失败？</b><br>A. 安装高版本 PowerPoint 或 WPS；或在 PPT 导出设置中切换到 Less 密度导出。</div>
+          <div><b class="text-ink">Q6: 上传PPT显示加载失败？</b><br>A. 检查扩展名为 .pptx 且文件 < 50MB；或选择"重新生成"下载新的副本。</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+      <button class="tutorial-close btn-primary px-3 py-1.5 rounded-md text-sm">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== G2: 选择教材资源模态框 ========== -->
+<div id="extractMaterialsModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
+  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[30rem] max-h-[82vh] overflow-hidden flex flex-col p-5 fade-in">
+    <div class="modal-header flex items-center justify-between mb-3 flex-shrink-0">
+      <h3 class="font-serif font-bold text-base text-ink">选择教材资源（可多选）用于一键提取知识点</h3>
+      <button class="modal-em-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+    </div>
+    <div class="modal-body flex-1 overflow-y-auto border border-rule rounded-md p-2">
+      <div id="materialsCheckList" class="space-y-1 text-xs">
+        <div class="text-center text-muted py-4">当前课程暂无教材，请先上传</div>
+      </div>
+      <div id="extractProgress" class="hidden mt-3">
+        <div class="flex items-center gap-2 text-teal-700 text-xs mb-1">
+          <span class="inline-block w-3 h-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></span>
+          <span id="extractProgressText">正在提取知识点 ...</span>
+          <span id="extractProgressCount" class="text-teal-500 font-medium ml-1"></span>
+        </div>
+        <div class="w-full h-1.5 bg-teal-100 rounded-full overflow-hidden">
+          <div id="extractProgressBar" class="h-full bg-teal-500 transition-all" style="width: 0%"></div>
+        </div>
+        <div id="extractProgressPoints" class="mt-2 max-h-28 overflow-y-auto text-[10px] text-muted space-y-0.5 hidden">
+          <div class="font-medium text-teal-600 mb-0.5">已提取的知识点：</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer flex justify-between gap-2 mt-4 flex-shrink-0">
+      <div class="flex gap-2">
+        <button id="selAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">全选</button>
+        <button id="unselAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">取消全选</button>
+      </div>
+      <div class="flex gap-2">
+        <button id="closeExtractMatBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+        <button id="confirmExtractMatBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== G3: 教案模板库管理模态框 ========== -->
+<div id="templateLibraryModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
+  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[50rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
+    <div class="modal-header flex items-center justify-between mb-3">
+      <h3 class="font-serif font-bold text-base text-ink">📑 教案模板库</h3>
+      <button class="tpl-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+    </div>
+    <div class="text-[10px] text-muted mb-3 bg-teal-50 border border-teal-200 rounded-lg p-2 leading-relaxed flex items-start justify-between gap-2">
+      <div class="flex-1">
+        💡 模板是教案的"骨架"——它定义了教案包含哪些内容（如教学目标、教学过程等）。
+        您可以直接 <strong>下载任意模板为 Word 文档</strong>，在 Word 中编辑后 <strong>上传</strong> 回来，系统会自动识别您的内容结构。
+      </div>
+      <a href="/api/lesson-templates/default/download" target="_blank" class="flex-shrink-0 btn-primary px-2 py-1 rounded text-[11px] whitespace-nowrap">⬇ 下载默认Word模板</a>
+    </div>
+    <div class="modal-body grid grid-cols-2 gap-3 text-xs">
+      <!-- 左栏：模板列表 -->
+      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
+        <div class="flex gap-2 flex-wrap">
+          <button id="newTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">+ 新建模板</button>
+          <button id="uploadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬆ 上传Word文档</button>
+          <input id="uploadTplInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden">
+        </div>
+        <div id="tplListGroup" class="list-group space-y-1 overflow-y-auto max-h-[64vh] pr-1">
+          <div class="text-center text-muted py-6">暂无模板，点击"+新建模板"</div>
+        </div>
+      </div>
+      <!-- 右栏：模板信息 -->
+      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
+        <div class="text-[11px] text-muted">当前模板：<span id="activeTplName" class="text-teal-700 font-medium">未选择</span></div>
+        <div id="tplInfoCard" class="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-3 text-[11px] leading-relaxed">
+          <div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>
+        </div>
+        <div class="flex justify-end gap-2 mt-1">
+          <button id="downloadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬇ 下载Word文档</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+      <button class="tpl-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 知识图谱模态框 ========== -->
+<div id="knowledgeGraphModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
+  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[70rem] max-h-[90vh] overflow-y-auto p-5 fade-in">
+    <div class="modal-header flex items-center justify-between mb-3">
+      <h3 class="font-serif font-bold text-base text-ink">📊 知识图谱 · <span id="kgCourseName" class="text-teal-700">课程名</span></h3>
+      <button class="kg-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+    </div>
+    <div class="mb-3 flex items-center gap-2 flex-wrap">
+      <span class="text-xs text-muted" id="kgStats">加载中...</span>
+      <button id="kgExportXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">📥 导出XLSX</button>
+      <button id="kgRefreshBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">🔄 刷新</button>
+    </div>
+    <div class="modal-body">
+      <!-- 图形化关系视图 (借鉴 leo-live-book 的 Cytoscape 渲染) -->
+      <div class="mb-3">
+        <div class="flex items-center justify-between mb-1">
+          <h4 class="text-xs font-semibold text-ink">知识关系图</h4>
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] text-muted mr-2">箭头方向表示知识流向</span>
+            <span class="text-[10px] text-muted mr-1">关系:</span>
+            <span class="text-[10px]" style="color:#4a9d8f;margin-right:8px;">━ 依赖</span>
+            <span class="text-[10px]" style="color:#2196F3;margin-right:8px;">┅ 支撑</span>
+            <span class="text-[10px]" style="color:#FF9800;margin-right:8px;">┅ 组成</span>
+            <span class="text-[10px]" style="color:#9C27B0;margin-right:8px;">┅ 对比</span>
+            <span class="text-[10px]" style="color:#F44336;margin-right:8px;">┅ 应用</span>
+            <button id="kgZoomIn" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="放大">＋</button>
+            <button id="kgZoomOut" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="缩小">－</button>
+            <button id="kgFit" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="适应屏幕">⊡</button>
+            <span id="kgZoomIndicator" class="text-[10px] text-muted ml-1">100%</span>
+          </div>
+        </div>
+        <div id="kgRelationView" class="bg-gray-50 border border-rule rounded-lg p-1 max-h-64 overflow-hidden relative" style="min-height: 240px;">
+          <!-- Cytoscape 渲染容器 -->
+          <div id="kgCytoscape" class="w-full h-full" style="height: 240px;"></div>
+          <div id="kgEmptyHint" class="absolute inset-0 flex items-center justify-center text-muted text-xs">暂无知识点数据</div>
+        </div>
+        <div class="mt-1 text-[10px] text-muted">提示：可拖拽节点、滚轮缩放、点击节点查看详情</div>
+      </div>
+      <!-- 表格视图 -->
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <h4 class="text-xs font-semibold text-ink">知识点明细表</h4>
+          <span class="text-[10px] text-muted">共 <span id="kgTableCount">0</span> 个知识点</span>
+        </div>
+        <div class="overflow-x-auto border border-rule rounded-lg">
+          <table class="w-full text-[11px]">
+            <thead class="bg-gray-100">
+              <tr>
+                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">#</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">知识点名称</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">层级</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">标签</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">前置知识点</th>
+                <th class="px-2 py-1.5 text-left font-medium text-muted">定义/说明</th>
+              </tr>
+            </thead>
+            <tbody id="kgTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+      <button class="kg-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== G4: 操作失败对话框 ========== -->
+<div id="failureModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)closeOperationFailure()">
+  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
+    <div class="modal-header flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">⚠</span>
+        <h3 class="font-serif font-bold text-base text-ochre">操作失败</h3>
+      </div>
+      <button onclick="closeOperationFailure()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+    </div>
+    <div class="modal-body mb-3">
+      <div id="failureMessage" class="text-sm text-ink-2 leading-relaxed mb-2"></div>
+      <div id="failureSolution" class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2"></div>
+      <div id="failureCode" class="text-[10px] text-muted font-mono break-all"></div>
+    </div>
+    <div class="modal-footer flex flex-wrap gap-2">
+      <button id="failRetryBtn" class="btn-primary px-2.5 py-1.5 rounded-md text-xs">重试</button>
+      <button id="failLowerBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">降参重试</button>
+      <button id="failTplBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">用模板快速填充</button>
+      <button id="failDraftBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">保存当前草稿</button>
+      <button id="failHelpBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">打开帮助</button>
+      <button id="failExitBtn" onclick="closeOperationFailure()" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 hover:bg-red-50">退出</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1475,13 +2025,154 @@
 const state = {
   currentCourseId: null,
   currentCourseName: '',
+  currentCourseMajor: '',
+  currentCourseDesc: '',
+  currentCourseSubject: '',  // 当前课程的学科标识(影响AI生成)
   currentLessonId: null,
   currentChapter: '',
   currentChapterId: null,  // 选中的章节树节点 ID
   knowledgePoints: [],
   pendingFiles: [],
   isProcessing: false,
+  materialType: null,      // 选中的教材类型（D 项 + H5 项）
+  activeTemplateId: null,  // 当前激活模板 ID（H4 + I 项）
+  templates: [],           // 教案模板库缓存
+  lastFailureCtx: null,    // 最近失败上下文（H1）
 };
+
+// 学科标识 -> 中文名映射(与后端 prompt_loader._SUBJECT_CN_MAP 对齐)
+const SUBJECT_CN_MAP = {
+  math: '数学', chinese: '语文', english: '英语', physics: '物理',
+  chemistry: '化学', biology: '生物', history: '历史', geography: '地理',
+  politics: '政治', it: '信息技术',
+  // 理学
+  applied_math: '应用数学', statistics: '统计学', psychology: '心理学', ecology: '生态学',
+  // 工学
+  cs: '计算机科学与技术', software_eng: '软件工程', ai: '人工智能', data_science: '数据科学',
+  electronic_info: '电子信息工程', communication: '通信工程', automation: '自动化',
+  mechanical: '机械工程', civil_eng: '土木工程', architecture: '建筑学',
+  materials_sci: '材料科学与工程', electrical_eng: '电气工程', environmental_eng: '环境工程',
+  biomedical_eng: '生物医学工程', cybersecurity: '网络安全',
+  // 医学
+  clinical_med: '临床医学', basic_med: '基础医学', pharmacy: '药学', nursing: '护理学',
+  stomatology: '口腔医学', tcm: '中医学', public_health: '公共卫生',
+  // 法学
+  law: '法学', sociology: '社会学', political_sci: '政治学与行政学',
+  // 经济学
+  economics: '经济学', finance: '金融学', fiscal: '财政学', intl_trade: '国际经济与贸易', insurance: '保险学',
+  // 管理学
+  business_admin: '工商管理', accounting: '会计学', financial_mgmt: '财务管理', marketing: '市场营销',
+  public_admin: '公共管理', info_mgmt: '信息管理与信息系统', ecommerce: '电子商务', logistics: '物流管理',
+  // 文学
+  chinese_lit: '中国语言文学', foreign_lit: '外国语言文学', journalism: '新闻传播学', advertising: '广告学', japanese: '日语',
+  // 教育学
+  education: '教育学', preschool_edu: '学前教育', edtech: '教育技术学', pe: '体育教育',
+  // 艺术学
+  art_design: '艺术设计', music: '音乐学', fine_arts: '美术学', dance: '舞蹈学', digital_media: '数字媒体艺术',
+  // 农学
+  agriculture: '农学', forestry: '林学', horticulture: '园艺学', animal_sci: '动物科学',
+  // 历史学
+  archaeology: '考古学', museology: '文物与博物馆学',
+  // 哲学
+  philosophy: '哲学', logic: '逻辑学',
+  default: '通用', other: '其他',
+};
+
+// 学科分类分组（用于下拉框分组展示）
+const SUBJECT_GROUPS = [
+  {
+    label: '中小学', items: [
+      { value: 'chinese', label: '语文' }, { value: 'math', label: '数学' },
+      { value: 'english', label: '英语' }, { value: 'physics', label: '物理' },
+      { value: 'chemistry', label: '化学' }, { value: 'biology', label: '生物' },
+      { value: 'history', label: '历史' }, { value: 'geography', label: '地理' },
+      { value: 'politics', label: '政治' }, { value: 'it', label: '信息技术' },
+    ]
+  },
+  {
+    label: '理学', items: [
+      { value: 'applied_math', label: '应用数学' }, { value: 'statistics', label: '统计学' },
+      { value: 'psychology', label: '心理学' }, { value: 'ecology', label: '生态学' },
+    ]
+  },
+  {
+    label: '工学', items: [
+      { value: 'cs', label: '计算机科学与技术' }, { value: 'software_eng', label: '软件工程' },
+      { value: 'ai', label: '人工智能' }, { value: 'data_science', label: '数据科学' },
+      { value: 'electronic_info', label: '电子信息工程' }, { value: 'communication', label: '通信工程' },
+      { value: 'automation', label: '自动化' }, { value: 'mechanical', label: '机械工程' },
+      { value: 'civil_eng', label: '土木工程' }, { value: 'architecture', label: '建筑学' },
+      { value: 'materials_sci', label: '材料科学与工程' }, { value: 'electrical_eng', label: '电气工程' },
+      { value: 'environmental_eng', label: '环境工程' }, { value: 'biomedical_eng', label: '生物医学工程' },
+      { value: 'cybersecurity', label: '网络安全' },
+    ]
+  },
+  {
+    label: '医学', items: [
+      { value: 'clinical_med', label: '临床医学' }, { value: 'basic_med', label: '基础医学' },
+      { value: 'pharmacy', label: '药学' }, { value: 'nursing', label: '护理学' },
+      { value: 'stomatology', label: '口腔医学' }, { value: 'tcm', label: '中医学' },
+      { value: 'public_health', label: '公共卫生' },
+    ]
+  },
+  {
+    label: '法学', items: [
+      { value: 'law', label: '法学' }, { value: 'sociology', label: '社会学' },
+      { value: 'political_sci', label: '政治学与行政学' },
+    ]
+  },
+  {
+    label: '经济学', items: [
+      { value: 'economics', label: '经济学' }, { value: 'finance', label: '金融学' },
+      { value: 'fiscal', label: '财政学' }, { value: 'intl_trade', label: '国际经济与贸易' },
+      { value: 'insurance', label: '保险学' },
+    ]
+  },
+  {
+    label: '管理学', items: [
+      { value: 'business_admin', label: '工商管理' }, { value: 'accounting', label: '会计学' },
+      { value: 'financial_mgmt', label: '财务管理' }, { value: 'marketing', label: '市场营销' },
+      { value: 'public_admin', label: '公共管理' }, { value: 'info_mgmt', label: '信息管理与信息系统' },
+      { value: 'ecommerce', label: '电子商务' }, { value: 'logistics', label: '物流管理' },
+    ]
+  },
+  {
+    label: '文学', items: [
+      { value: 'chinese_lit', label: '中国语言文学' }, { value: 'foreign_lit', label: '外国语言文学' },
+      { value: 'journalism', label: '新闻传播学' }, { value: 'advertising', label: '广告学' },
+      { value: 'japanese', label: '日语' },
+    ]
+  },
+  {
+    label: '教育学', items: [
+      { value: 'education', label: '教育学' }, { value: 'preschool_edu', label: '学前教育' },
+      { value: 'edtech', label: '教育技术学' }, { value: 'pe', label: '体育教育' },
+    ]
+  },
+  {
+    label: '艺术学', items: [
+      { value: 'art_design', label: '艺术设计' }, { value: 'music', label: '音乐学' },
+      { value: 'fine_arts', label: '美术学' }, { value: 'dance', label: '舞蹈学' },
+      { value: 'digital_media', label: '数字媒体艺术' },
+    ]
+  },
+  {
+    label: '农学', items: [
+      { value: 'agriculture', label: '农学' }, { value: 'forestry', label: '林学' },
+      { value: 'horticulture', label: '园艺学' }, { value: 'animal_sci', label: '动物科学' },
+    ]
+  },
+  {
+    label: '历史学', items: [
+      { value: 'archaeology', label: '考古学' }, { value: 'museology', label: '文物与博物馆学' },
+    ]
+  },
+  {
+    label: '哲学', items: [
+      { value: 'philosophy', label: '哲学' }, { value: 'logic', label: '逻辑学' },
+    ]
+  },
+];
 
 // ==================== 工具函数 ====================
 async function api(url, options = {}) {
@@ -1552,6 +2243,72 @@ function showConfirm(title, message) {
     };
     document.getElementById('confirmOk').onclick = () => { cleanup(); resolve(true); };
     document.getElementById('confirmCancel').onclick = () => { cleanup(); resolve(false); };
+  });
+}
+
+// 学科选择框（下拉选择代替手动输入，含大学学科分类）
+function showSubjectPicker(currentValue) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('subjectPickerModal');
+    const select = document.getElementById('subjectPickerSelect');
+    select.innerHTML = '';
+
+    // 通用选项
+    const optGeneral = document.createElement('option');
+    optGeneral.value = ''; optGeneral.textContent = '通用（不指定学科）';
+    select.appendChild(optGeneral);
+
+    // 按分组渲染
+    SUBJECT_GROUPS.forEach(group => {
+      const optg = document.createElement('optgroup');
+      optg.label = group.label;
+      group.items.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.value; opt.textContent = item.label;
+        optg.appendChild(opt);
+      });
+      select.appendChild(optg);
+    });
+
+    // 其他
+    const optOther = document.createElement('option');
+    optOther.value = 'other'; optOther.textContent = '其他';
+    select.appendChild(optOther);
+
+    // 预选当前值
+    if (currentValue) {
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === currentValue) {
+          select.selectedIndex = i; break;
+        }
+      }
+      // 滚动到选中项
+      setTimeout(() => {
+        const idx = select.selectedIndex;
+        if (idx >= 0) select.options[idx].scrollIntoView({ block: 'center' });
+      }, 50);
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => select.focus(), 50);
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      document.getElementById('subjectPickerOk').onclick = null;
+      document.getElementById('subjectPickerCancel').onclick = null;
+      select.onkeydown = null;
+    };
+    const ok = () => { const v = select.value; cleanup(); resolve(v); };
+    const cancel = () => { cleanup(); resolve(undefined); };
+    select.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); ok(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    };
+    select.ondblclick = (e) => { e.preventDefault(); ok(); };
+    document.getElementById('subjectPickerOk').onclick = ok;
+    document.getElementById('subjectPickerCancel').onclick = cancel;
   });
 }
 
@@ -1764,20 +2521,21 @@ async function loadCourses() {
     }
     list.innerHTML = data.data.map(c => `
       <div class="course-item p-2 rounded-md cursor-pointer hover:bg-teal-50 ${c.id === state.currentCourseId ? 'bg-teal-100 border-l-2 border-teal-500' : ''}"
-           data-id="${c.id}" data-name="${escapeHtml(c.name)}">
+           data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-major="${escapeHtml(c.major || '')}" data-description="${escapeHtml(c.description || '')}" data-subject="${escapeHtml(c.subject || '')}">
         <div class="flex items-center justify-between">
           <div class="text-sm font-medium text-ink truncate flex-1">${escapeHtml(c.name)}</div>
-          <button class="course-menu-btn text-muted hover:text-ochre" data-course-id="${c.id}" title="更多">
-            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/></svg>
+          <button class="course-menu-btn text-muted hover:text-ochre p-0.5" data-course-id="${c.id}" title="更多">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/></svg>
           </button>
         </div>
         ${c.major ? `<div class="text-[10px] text-muted truncate">${escapeHtml(c.major)}</div>` : ''}
+        ${c.subject ? `<div class="text-[10px] text-teal-600 truncate">📖 ${escapeHtml(SUBJECT_CN_MAP[c.subject] || c.subject)}</div>` : ''}
       </div>
     `).join('');
     list.querySelectorAll('.course-item').forEach(el => {
       el.onclick = (e) => {
-        if (e.target.closest('.course-menu-btn')) return; // 避免点菜单触发选课
-        selectCourse(parseInt(el.dataset.id), el.dataset.name);
+        if (e.target.closest('.course-menu-btn')) return;
+        selectCourse(parseInt(el.dataset.id), el.dataset.name, el.dataset.major, el.dataset.description, el.dataset.subject);
       };
     });
     list.querySelectorAll('.course-menu-btn').forEach(btn => {
@@ -1793,24 +2551,37 @@ async function loadCourses() {
   }
 }
 
-async function selectCourse(id, name) {
+async function selectCourse(id, name, major, description, subject) {
   state.currentCourseId = id;
   state.currentCourseName = name;
+  state.currentCourseMajor = major || '';
+  state.currentCourseDesc = description || '';
+  state.currentCourseSubject = subject || '';
   state.currentLessonId = null;
   state.currentChapterId = null;
   state.knowledgePoints = [];
 
   document.getElementById('currentCourseName').textContent = name;
   document.getElementById('courseInfo').classList.remove('hidden');
+  // 更新课程元信息
+  const metaEl = document.getElementById('currentCourseMeta');
+  const parts = [];
+  if (major) parts.push(`专业：${major}`);
+  if (subject) parts.push(`学科：${SUBJECT_CN_MAP[subject] || subject}`);
+  if (description) parts.push(description);
+  metaEl.textContent = parts.join(' | ');
   document.getElementById('uploadBtn').disabled = false;
   document.getElementById('uploadLessonBtn').disabled = false;
   document.getElementById('uploadPptBtn').disabled = false;
   document.getElementById('extractBtn').disabled = false;
+  const smartBtn = document.getElementById('smartExtractBtn');
+  if (smartBtn) smartBtn.disabled = false;
   document.getElementById('genLessonBtn').disabled = state.knowledgePoints.length === 0;
   document.getElementById('sendBtn').disabled = true;
   document.getElementById('exportMdBtn').disabled = true;
   document.getElementById('exportDocxBtn').disabled = true;
   document.getElementById('genPptBtn').disabled = true;
+  document.getElementById('evaluateLessonBtn').disabled = true;
   document.getElementById('chapterInput').value = '';
 
   document.getElementById('previewContent').innerHTML = `
@@ -1821,19 +2592,22 @@ async function selectCourse(id, name) {
 
   await loadMaterials(id);
   await loadChapters(id);
-  await loadPptRecords(id);
+  await loadPptRecords(id, null, null);
   await loadCourses(); // 刷新高亮
+  // F3: 切换课程时加载历史聊天记录（按课程保留）
+  await loadChatHistory(id);
 }
 
 async function createCourse() {
   const name = document.getElementById('newCourseName').value.trim();
   const major = document.getElementById('newCourseMajor').value.trim();
   const desc = document.getElementById('newCourseDesc').value.trim();
+  const subject = document.getElementById('newCourseSubject').value;
   if (!name) { toast('请输入课程名称'); return; }
   try {
     await api('/api/courses', {
       method: 'POST',
-      body: JSON.stringify({ name, major: major || null, description: desc || null }),
+      body: JSON.stringify({ name, major: major || null, description: desc || null, subject: subject || '' }),
     });
     toast('课程创建成功');
     document.getElementById('courseModal').classList.add('hidden');
@@ -1841,6 +2615,7 @@ async function createCourse() {
     document.getElementById('newCourseName').value = '';
     document.getElementById('newCourseMajor').value = '';
     document.getElementById('newCourseDesc').value = '';
+    document.getElementById('newCourseSubject').value = '';
     await loadCourses();
   } catch (e) {
     toast('创建失败: ' + e.message);
@@ -1951,6 +2726,7 @@ function selectChapter(id, name) {
   const row = document.querySelector(`#chapterTree .chapter-row[data-id="${id}"]`);
   if (row) row.classList.add('active');
   loadLessonsList(state.currentCourseId, id, name);
+  loadPptRecords(state.currentCourseId, id, name);
   // 加载该章节的知识点
   loadChapterKnowledgePoints(id);
 }
@@ -2001,11 +2777,32 @@ function renderLessonList(lessons) {
       <svg class="lesson-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
       <span class="lesson-name">${escapeHtml(l.title || l.chapter)}</span>
       <span class="lesson-date">${l.created_at ? formatDate(l.created_at) : ''}</span>
+      <button class="del-lesson text-red-400 hover:text-red-600 text-xs ml-auto flex-shrink-0" data-id="${l.id}" title="删除教案">×</button>
     </div>
   `).join('');
   list.querySelectorAll('.lesson-item').forEach(item => {
-    item.onclick = () => {
+    item.onclick = (e) => {
+      if (e.target.closest('.del-lesson')) return;
       selectLesson(parseInt(item.dataset.id), item.dataset.title);
+    };
+  });
+  list.querySelectorAll('.del-lesson').forEach(b => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      if (!(await showConfirm('删除教案', '确认删除此教案？'))) return;
+      try {
+        await api(`/api/lessons/${b.dataset.id}`, { method: 'DELETE' });
+        toast('教案已删除');
+        if (state.currentLessonId === parseInt(b.dataset.id)) {
+          state.currentLessonId = null;
+          document.getElementById('lessonPreview').classList.add('hidden');
+        }
+        const courseId = state.currentCourseId;
+        if (courseId) {
+          const data = await api(`/api/courses/${courseId}/lessons`);
+          renderLessonList(data.data || []);
+        }
+      } catch (e) { toast('删除失败: ' + e.message); }
     };
   });
 }
@@ -2022,10 +2819,11 @@ async function selectLesson(lessonId, title) {
       renderLessonPreview(data.data.plan);
       document.getElementById('previewMeta').textContent = data.data.plan.total_minutes ? `${data.data.plan.total_minutes} 分钟` : '';
       document.getElementById('sendBtn').disabled = false;
-      document.getElementById('exportMdBtn').disabled = false;
-      document.getElementById('exportDocxBtn').disabled = false;
-      document.getElementById('genPptBtn').disabled = false;
-    }
+    document.getElementById('exportMdBtn').disabled = false;
+    document.getElementById('exportDocxBtn').disabled = false;
+    document.getElementById('genPptBtn').disabled = false;
+    document.getElementById('evaluateLessonBtn').disabled = false;
+  }
   } catch (e) {
     toast('加载教案失败: ' + e.message);
   }
@@ -2089,7 +2887,7 @@ function showChapterContextMenu(e, chapterId, chapterName, depth) {
   });
 }
 
-// 课程三点菜单（简化版：重命名/删除）
+// 课程三点菜单
 function showCourseContextMenu(e, courseId, courseName) {
   closeAnyMenu();
   const menu = document.createElement('div');
@@ -2099,6 +2897,18 @@ function showCourseContextMenu(e, courseId, courseName) {
     <div class="menu-item" data-action="rename">
       <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
       <span>重命名</span>
+    </div>
+    <div class="menu-item" data-action="edit-info">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span>编辑课程信息</span>
+    </div>
+    <div class="menu-item" data-action="set-subject">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.247 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.753 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.753 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.747 0-3.332.477-4.5 1.253"/></svg>
+      <span>设置学科领域</span>
+    </div>
+    <div class="menu-item" data-action="knowledge-graph">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>知识图谱</span>
     </div>
     <div class="menu-divider"></div>
     <div class="menu-item danger" data-action="delete">
@@ -2133,6 +2943,56 @@ function showCourseContextMenu(e, courseId, courseName) {
       } catch (e) { toast('重命名失败: ' + e.message); }
     }
     closeAnyMenu();
+  };
+  menu.querySelector('[data-action="edit-info"]').onclick = async () => {
+    const currentMajor = state.currentCourseMajor || '';
+    const currentDesc = state.currentCourseDesc || '';
+    const newMajor = await showPrompt('编辑专业（留空则不填）', currentMajor);
+    if (newMajor === null) { closeAnyMenu(); return; }
+    const newDesc = await showPrompt('编辑课程描述（留空则不填）', currentDesc);
+    if (newDesc === null) { closeAnyMenu(); return; }
+    try {
+      const payload = {};
+      if (newMajor.trim() !== currentMajor) payload.major = newMajor.trim() || null;
+      if (newDesc.trim() !== currentDesc) payload.description = newDesc.trim() || null;
+      if (Object.keys(payload).length === 0) { closeAnyMenu(); return; }
+      await api(`/api/courses/${courseId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      toast('课程信息已更新');
+      state.currentCourseMajor = newMajor.trim();
+      state.currentCourseDesc = newDesc.trim();
+      const metaEl = document.getElementById('currentCourseMeta');
+      const parts = [];
+      if (newMajor.trim()) parts.push(`专业：${newMajor.trim()}`);
+      if (state.currentCourseSubject) parts.push(`学科：${SUBJECT_CN_MAP[state.currentCourseSubject] || state.currentCourseSubject}`);
+      if (newDesc.trim()) parts.push(newDesc.trim());
+      metaEl.textContent = parts.join(' | ');
+      await loadCourses();
+    } catch (e) { toast('更新失败: ' + e.message); }
+    closeAnyMenu();
+  };
+  menu.querySelector('[data-action="set-subject"]').onclick = async () => {
+    // 设置课程学科领域(影响AI生成教案/PPT/知识点的学科规范)
+    const currentSubject = state.currentCourseSubject || '';
+    const newSubject = await showSubjectPicker(currentSubject);
+    if (newSubject === undefined) { closeAnyMenu(); return; }
+    if (newSubject === currentSubject) { closeAnyMenu(); return; }
+    try {
+      await api(`/api/courses/${courseId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ subject: newSubject }),
+      });
+      toast('学科领域已更新');
+      state.currentCourseSubject = newSubject;
+      await loadCourses();
+    } catch (e) { toast('更新失败: ' + e.message); }
+    closeAnyMenu();
+  };
+  menu.querySelector('[data-action="knowledge-graph"]').onclick = () => {
+    closeAnyMenu();
+    openKnowledgeGraph();
   };
   menu.querySelector('[data-action="delete"]').onclick = async () => {
     if (!(await showConfirm('删除课程', `确认删除课程「${courseName}」？\n该课程下所有章节、教材、教案将一并删除。`))) {
@@ -2231,7 +3091,9 @@ async function deleteChapter(chapterId, chapterName) {
     toast('章节已删除');
     if (state.currentChapterId === chapterId) {
       state.currentChapterId = null;
+      state.currentChapter = '';
       document.getElementById('chapterInput').value = '';
+      loadPptRecords(state.currentCourseId, null, null);
     }
     await loadChapters(state.currentCourseId);
   } catch (e) { toast('删除失败: ' + e.message); }
@@ -2247,20 +3109,29 @@ async function loadMaterials(courseId) {
       return;
     }
     list.innerHTML = data.data.map(m => `
-      <div class="material-item p-2 rounded-md bg-white/60 border border-rule">
+      <div class="material-item p-2 rounded-md bg-white/60 border border-rule ${m.is_primary ? 'ring-1 ring-teal-400 bg-teal-50/40' : ''}">
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-ink truncate">${escapeHtml(m.filename)}</div>
-            <div class="text-[10px] text-muted mt-0.5 flex items-center gap-1.5">
-              <span>${m.material_type}</span>
+            <div class="text-xs font-medium text-ink truncate">
+              ${m.is_primary ? '<span class="text-teal-600 mr-0.5" title="主教材">★</span>' : ''}${escapeHtml(m.filename)}
+            </div>
+            <div class="text-[10px] text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+              ${renderMaterialBadge(m)}
+              ${m.version_label ? `<span class="px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] whitespace-nowrap">${escapeHtml(m.version_label)}</span>` : ''}
+              ${m.is_primary ? '<span class="px-1.5 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-700 text-[10px] font-medium whitespace-nowrap">主教材</span>' : ''}
               <span>·</span>
               <span>${formatSize(m.file_size)}</span>
               <span>·</span>
-              <span>${m.char_count}字</span>
+              <span>${m.char_count ?? 0}字</span>
             </div>
           </div>
-          <button class="del-mat text-red-400 hover:text-red-600 text-xs" data-id="${m.id}">×</button>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            ${m.is_primary ? '' : `<button class="set-primary-mat text-amber-500 hover:text-amber-700 text-xs" data-id="${m.id}" title="设为主教材">★</button>`}
+            <button class="reupload-mat text-teal-500 hover:text-teal-700 text-xs" data-id="${m.id}" title="替换文件">↻</button>
+            <button class="del-mat text-red-400 hover:text-red-600 text-xs" data-id="${m.id}">×</button>
+          </div>
         </div>
+        <input type="file" class="hidden reupload-input" data-id="${m.id}" accept=".pdf,.docx,.txt,.md">
       </div>
     `).join('');
     list.querySelectorAll('.del-mat').forEach(b => {
@@ -2272,6 +3143,35 @@ async function loadMaterials(courseId) {
         } catch (e) { toast('删除失败: ' + e.message); }
       };
     });
+    list.querySelectorAll('.set-primary-mat').forEach(b => {
+      b.onclick = async () => {
+        try {
+          const r = await api(`/api/materials/${b.dataset.id}/set-primary`, { method: 'PUT' });
+          toast(r.message || '已设为主教材');
+          await loadMaterials(state.currentCourseId);
+        } catch (e) { toast('设置失败: ' + e.message); }
+      };
+    });
+    list.querySelectorAll('.reupload-mat').forEach(b => {
+      b.onclick = () => {
+        const input = b.closest('.material-item').querySelector('.reupload-input');
+        if (input) input.click();
+      };
+    });
+    list.querySelectorAll('.reupload-input').forEach(input => {
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          await api(`/api/materials/${input.dataset.id}/reupload`, { method: 'PUT', body: fd });
+          toast('文件已替换');
+          await loadMaterials(state.currentCourseId);
+        } catch (e) { toast('替换失败: ' + e.message); }
+        input.value = '';
+      };
+    });
   } catch (e) {
     toast('加载教材失败: ' + e.message);
   }
@@ -2279,21 +3179,38 @@ async function loadMaterials(courseId) {
 
 async function uploadFiles() {
   if (state.pendingFiles.length === 0) return;
+  // H5: 读取教材类型单选
+  const radio = document.querySelector('input[name="mat_type"]:checked');
+  state.materialType = radio && radio.value && radio.value !== 'other' ? radio.value : null;
+  // 多教材版本管理：读取版本标签 + 主教材勾选（仅作用于首个文件，其余文件忽略主教材标记避免重复设置）
+  const versionLabel = (document.getElementById('versionLabelInput').value || '').trim();
+  const isPrimaryChecked = document.getElementById('isPrimaryCheckbox').checked;
   const btn = document.getElementById('confirmUpload');
   btn.disabled = true;
   btn.textContent = '上传中...';
   try {
-    for (const f of state.pendingFiles) {
+    for (let i = 0; i < state.pendingFiles.length; i++) {
+      const f = state.pendingFiles[i];
       const fd = new FormData();
       fd.append('file', f);
+      if (state.materialType) fd.append('material_type', state.materialType);
+      if (versionLabel) fd.append('version_label', versionLabel);
+      // 主教材标记仅附加到本次上传的第一个文件（同课程仅一本主教材）
+      if (isPrimaryChecked && i === 0) fd.append('is_primary', 'true');
       await api(`/api/courses/${state.currentCourseId}/materials`, { method: 'POST', body: fd });
     }
-    toast(`已上传 ${state.pendingFiles.length} 个文件`);
+    toast(`已上传 ${state.pendingFiles.length} 个文件` + (isPrimaryChecked ? '（已设主教材）' : ''));
     state.pendingFiles = [];
     document.getElementById('fileList').innerHTML = '';
     document.getElementById('confirmUpload').disabled = true;
     document.getElementById('uploadModal').classList.add('hidden');
     document.getElementById('uploadModal').classList.remove('flex');
+    // 重置默认项（恢复自动识别默认 + 清空版本标签/主教材勾选）
+    const radios = document.querySelectorAll('input[name="mat_type"]');
+    radios.forEach(r => { r.checked = (r.value === 'other'); });
+    document.getElementById('versionLabelInput').value = '';
+    document.getElementById('isPrimaryCheckbox').checked = false;
+    state.materialType = null;
     await loadMaterials(state.currentCourseId);
   } catch (e) {
     toast('上传失败: ' + e.message);
@@ -2329,6 +3246,23 @@ async function extractKnowledge() {
     appendAiMessage(`已提取 <b class="text-teal-600">${state.knowledgePoints.length}</b> 个知识点，章节概要：${escapeHtml(data.data.summary || '')}<br><span class="text-xs text-muted">点击 ② 生成教案 继续下一步</span>`);
   } catch (e) {
     appendAiMessage(`<span class="text-red-600">提取失败：</span>${escapeHtml(e.message)}`);
+    // K: 使用 showOperationFailure
+    const retryFn = () => extractKnowledge();
+    const lowerParamsFn = () => {
+      try {
+        const cur = parseFloat(document.getElementById('llmTemperature').value);
+        const max = parseInt(document.getElementById('llmMaxTokens').value);
+        if (!isNaN(cur)) document.getElementById('llmTemperature').value = (cur / 2).toFixed(2);
+        if (!isNaN(max)) document.getElementById('llmMaxTokens').value = Math.round(max * 1.5);
+      } catch(_) {}
+      extractKnowledge();
+    };
+    showOperationFailure('章节知识点提取失败', e, {
+      retryFn,
+      lowerParamsFn,
+      draftData: { course_id: state.currentCourseId, chapter, points: state.knowledgePoints },
+      onHelp: openTutorial,
+    });
   } finally {
     btn.disabled = false;
     btn.textContent = '① 提取知识点';
@@ -2570,9 +3504,12 @@ function resetLessonParams() {
 async function generateLesson() {
   if (state.knowledgePoints.length === 0) { toast('请先提取知识点'); return; }
   const btn = document.getElementById('genLessonBtn');
+  const addieChecked = document.getElementById('addieModeCheckbox')?.checked;
   btn.disabled = true;
-  btn.textContent = '生成中...';
-  appendAiMessage('正在按六阶段结构生成教案，请稍候（约30-60秒）...');
+  btn.textContent = addieChecked ? 'ADDIE审议中...' : '生成中...';
+  appendAiMessage(addieChecked
+    ? '已启用 ADDIE 多智能体审议：学情分析 → 教案生成 → 自评 → 精修，预计 1-2 分钟...'
+    : '正在按六阶段结构生成教案，请稍候（约30-60秒）...');
 
   try {
     const fd = new FormData();
@@ -2585,6 +3522,12 @@ async function generateLesson() {
     if (state.currentChapterId !== null) {
       fd.append('chapter_id', state.currentChapterId);
     }
+    // 模板 ID（H4：activeTemplateId）
+    if (state.activeTemplateId) {
+      fd.append('template_id', String(state.activeTemplateId));
+    }
+    // ADDIE 多智能体审议模式
+    if (addieChecked) fd.append('mode', 'addie');
 
     const data = await api(`/api/courses/${state.currentCourseId}/generate-lesson`, { method: 'POST', body: fd });
     state.currentLessonId = data.data.id;
@@ -2593,11 +3536,82 @@ async function generateLesson() {
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('exportMdBtn').disabled = false;
     document.getElementById('exportDocxBtn').disabled = false;
-    appendAiMessage(`<b class="text-teal-600">教案生成完成 ✓</b><br><span class="text-xs text-muted">六阶段已编排：${data.data.plan.stages.map(s => s.name).join(' / ')}</span><br><span class="text-xs">现在可以在下方对话框输入修改意见，或点击 ③ 生成PPT 按钮制作教学课件，也可导出教案（Markdown / DOCX）</span>`);
+    document.getElementById('evaluateLessonBtn').disabled = false;
+
+    // 渲染 ADDIE 审议过程卡片(若启用)
+    let addieCard = '';
+    if (addieChecked && data.data.addie_meta) {
+      const m = data.data.addie_meta;
+      const la = m.learner_analysis || {};
+      const ev = m.evaluation || {};
+      const issues = (ev.issues || []).slice(0, 4);
+      const score = typeof ev.overall_score === 'number' ? (ev.overall_score >= 0 ? `${ev.overall_score}/100` : '审议失败') : '-';
+      const issuesHtml = issues.length
+        ? issues.map(i => `<li><span class="px-1 rounded ${i.severity==='error'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'} text-[10px]">${i.severity==='error'?'错误':'警告'}</span> <span class="text-muted">[${escapeHtml(i.dimension||'')}]</span> ${escapeHtml(i.description||'')}</li>`).join('')
+        : '<li class="text-muted">未发现问题</li>';
+      addieCard = `
+        <details class="mt-2 border border-teal-200 bg-teal-50/40 rounded-md p-2 text-xs">
+          <summary class="cursor-pointer text-teal-700 font-medium select-none">🔍 ADDIE 多智能体审议过程${m.refined ? '（已精修）' : ''} · 自评 ${score}</summary>
+          <div class="mt-2 space-y-2">
+            <div><b class="text-ink">学情摘要：</b>${escapeHtml(la.learner_summary || '-')}</div>
+            ${la.cognitive_obstacles && la.cognitive_obstacles.length ? `<div><b class="text-ink">认知障碍点：</b>${la.cognitive_obstacles.map(o=>escapeHtml(o)).join('；')}</div>` : ''}
+            ${la.key_strategies && la.key_strategies.length ? `<div><b class="text-ink">关键策略：</b>${la.key_strategies.map(o=>escapeHtml(o)).join('；')}</div>` : ''}
+            <div><b class="text-ink">自评问题清单：</b><ul class="list-disc pl-4 space-y-0.5 mt-0.5">${issuesHtml}</ul></div>
+            ${m.refine_error ? `<div class="text-red-600">精修失败：${escapeHtml(m.refine_error)}</div>` : ''}
+          </div>
+        </details>`;
+    }
+
+    appendAiMessage(`<b class="text-teal-600">教案生成完成 ✓</b>${addieChecked ? ' <span class="text-[10px] text-teal-700">(ADDIE 多智能体审议)</span>' : ''}<br><span class="text-xs text-muted">六阶段已编排：${data.data.plan.stages.map(s => s.name).join(' / ')}</span>${addieCard}<br><span class="text-xs">现在可以在下方对话框输入修改意见，或点击 ③ 生成PPT 按钮制作教学课件，也可导出教案（Markdown / DOCX）</span>`);
     // 思维导图联动：教案生成后刷新
     await refreshMindmapIfOpen();
   } catch (e) {
     appendAiMessage(`<span class="text-red-600">生成失败：</span>${escapeHtml(e.message)}`);
+    // I: 改使用 showOperationFailure
+    const retryFn = () => generateLesson();
+    const lowerParamsFn = () => {
+      try {
+        const cur = parseFloat(document.getElementById('llmTemperature').value);
+        const max = parseInt(document.getElementById('llmMaxTokens').value);
+        if (!isNaN(cur)) document.getElementById('llmTemperature').value = (cur / 2).toFixed(2);
+        if (!isNaN(max)) document.getElementById('llmMaxTokens').value = Math.round(max * 1.5);
+      } catch(_) {}
+      generateLesson();
+    };
+    const tplFillFn = async () => {
+      try {
+        if (state.currentLessonId) {
+          const res = await api(`/api/lessons/${state.currentLessonId}/fallback-template`, { method: 'POST' });
+          if (res && res.data && res.data.plan) {
+            state.currentLessonId = res.data.id || state.currentLessonId;
+            renderLessonPreview(res.data.plan);
+            toast('已使用模板快速填充');
+            closeOperationFailure();
+            return;
+          }
+        }
+        // 兜底：调用教案模板库默认模板拼接
+        toast('当前无教案ID，已打开模板库供手动选用');
+        openTemplateLibrary();
+      } catch (err) {
+        toast('模板填充失败：' + err.message);
+      }
+    };
+    showOperationFailure('教案生成失败', e, {
+      retryFn,
+      lowerParamsFn,
+      templateId: state.activeTemplateId,
+      fallbackFn: tplFillFn,
+      draftData: {
+        course_id: state.currentCourseId,
+        chapter: state.currentChapter,
+        chapter_id: state.currentChapterId,
+        knowledge_points: state.knowledgePoints,
+        params: collectLessonParams(),
+        template_id: state.activeTemplateId,
+      },
+      onHelp: openTutorial,
+    });
   } finally {
     btn.disabled = false;
     btn.textContent = '② 生成教案';
@@ -2770,10 +3784,13 @@ async function loadLessonsByChapter(courseId, chapterId) {
 }
 
 // ==================== PPT记录管理 ====================
-async function loadPptRecords(courseId) {
+async function loadPptRecords(courseId, chapterId, chapterName) {
   try {
     const data = await api(`/api/courses/${courseId}/ppt-records`);
     let records = data.data || [];
+    if (chapterId !== null && chapterId !== undefined && chapterName) {
+      records = records.filter(r => r.chapter === chapterName);
+    }
     renderPptRecordList(records);
   } catch (e) {
     console.error('加载PPT记录失败:', e);
@@ -2821,7 +3838,7 @@ document.getElementById('uploadPptInput').onchange = async (e) => {
     const data = await res.json();
     if (!data.success) throw new Error(data.message || '上传失败');
     toast('PPT上传成功');
-    await loadPptRecords(state.currentCourseId);
+    await loadPptRecords(state.currentCourseId, state.currentChapterId, state.currentChapter);
   } catch (err) {
     toast('上传失败: ' + err.message);
   }
@@ -2941,29 +3958,31 @@ function renderPptRecordList(records) {
     </div>`;}).join('');
   list.querySelectorAll('.ppt-item').forEach(item => {
     const dlBtn = item.querySelector('.ppt-dl-btn');
-    dlBtn.onclick = async (e) => {
-      e.stopPropagation();
-      const id = parseInt(item.dataset.id);
-      const source = item.dataset.source;
-      try {
-        const fetchUrl = source === 'upload' ? `/api/ppt/${id}/download` : `/api/ppt-records/${id}/download`;
-        const res = await fetch(fetchUrl, source === 'upload' ? {} : { method: 'POST' });
-        if (!res.ok) throw new Error('下载失败');
-        const blob = await res.blob();
-        const disposition = res.headers.get('Content-Disposition') || '';
-        let filename = '教学PPT.pptx';
-        const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
-        if (starMatch) filename = decodeURIComponent(starMatch[1]);
-        else { const m = disposition.match(/filename="([^"]+)"/); if (m) filename = m[1]; }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        toast('下载失败: ' + e.message);
-      }
-    };
+    if (dlBtn) {
+      dlBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const id = parseInt(item.dataset.id);
+        const source = item.dataset.source;
+        try {
+          const fetchUrl = source === 'upload' ? `/api/ppt/${id}/download` : `/api/ppt-records/${id}/download`;
+          const res = await fetch(fetchUrl, source === 'upload' ? {} : { method: 'POST' });
+          if (!res.ok) throw new Error('下载失败');
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition') || '';
+          let filename = '教学PPT.pptx';
+          const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+          if (starMatch) filename = decodeURIComponent(starMatch[1]);
+          else { const m = disposition.match(/filename="([^"]+)"/); if (m) filename = m[1]; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          toast('下载失败: ' + e.message);
+        }
+      };
+    }
     // 点击PPT记录项，右侧显示详情
     item.onclick = async () => {
       const source = item.dataset.source;
@@ -3029,7 +4048,7 @@ function renderPptRecordList(records) {
             ${slidesHtml ? `<div class="mt-3"><div class="text-xs font-semibold text-muted mb-1">幻灯片预览</div>${slidesHtml}</div>` : ''}
             <div class="mt-3 flex gap-2">
               <button class="btn-primary px-3 py-1 rounded text-xs" onclick="(async()=>{try{const res=await fetch('/api/ppt-records/${r.id}/download',{method:'POST'});if(!res.ok)throw new Error('下载失败');const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='${escapeHtml(r.title || 'ppt')}.pptx';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);toast('下载成功');}catch(e){toast('下载失败: '+e.message);}})()">⬇ 下载PPT</button>
-              <button class="btn-ghost px-3 py-1 rounded text-xs" onclick="(async()=>{if(!await showConfirm('删除PPT记录','确认删除此PPT记录？'))return;try{await api('/api/ppt-records/${r.id}',{method:'DELETE'});toast('已删除');loadPptRecords(${state.currentCourseId});document.getElementById('previewContent').innerHTML='<div class=\\'text-center text-xs text-muted py-10\\'><div class=\\'font-serif text-base text-teal-700 mb-2\\'>教案预览区</div></div>';}catch(e){toast('删除失败: '+e.message)}})()">🗑 删除</button>
+              <button class="btn-ghost px-3 py-1 rounded text-xs" onclick="(async()=>{if(!await showConfirm('删除PPT记录','确认删除此PPT记录？'))return;try{await api('/api/ppt-records/${r.id}',{method:'DELETE'});toast('已删除');loadPptRecords(${state.currentCourseId},${state.currentChapterId ? state.currentChapterId : 'null'},'${(state.currentChapter || '').replace(/'/g, "\\'")}');document.getElementById('previewContent').innerHTML='<div class=\\'text-center text-xs text-muted py-10\\'><div class=\\'font-serif text-base text-teal-700 mb-2\\'>教案预览区</div></div>';}catch(e){toast('删除失败: '+e.message)}})()">🗑 删除</button>
             </div>
           </div>
         `;
@@ -3047,6 +4066,59 @@ async function refreshMindmapIfOpen() {
   if (!modal.classList.contains('hidden') && state.currentCourseId && state.knowledgePoints.length > 0) {
     await generateMindmap();
   }
+}
+
+// ==================== 聊天记录本地存储 ====================
+function getChatStorageKey(courseId) {
+  return `chat_history_${courseId}`;
+}
+
+function saveChatToLocalStorage(courseId, messages) {
+  try {
+    const key = getChatStorageKey(courseId);
+    const existing = loadChatFromLocalStorage(courseId);
+    const merged = mergeChatMessages(existing, messages);
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch (e) {
+    console.warn('saveChatToLocalStorage failed:', e.message);
+  }
+}
+
+function loadChatFromLocalStorage(courseId) {
+  try {
+    const key = getChatStorageKey(courseId);
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('loadChatFromLocalStorage failed:', e.message);
+    return [];
+  }
+}
+
+function clearChatLocalStorage(courseId) {
+  try {
+    localStorage.removeItem(getChatStorageKey(courseId));
+  } catch (e) {
+    console.warn('clearChatLocalStorage failed:', e.message);
+  }
+}
+
+function mergeChatMessages(local, remote) {
+  const seen = new Set();
+  const result = [];
+  const all = [...local, ...remote];
+  for (const m of all) {
+    const key = m.id ? `${m.role}_${m.id}` : `${m.role}_${m.content}_${m.created_at || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(m);
+    }
+  }
+  result.sort((a, b) => {
+    if (a.created_at && b.created_at) return new Date(a.created_at) - new Date(b.created_at);
+    return 0;
+  });
+  return result;
 }
 
 // ==================== 对话修改 ====================
@@ -3098,6 +4170,14 @@ async function sendChat() {
       appendAiMessage(`<b class="text-ochre">需澄清：</b>${escapeHtml(data.data.response)}`);
     } else {
       appendAiMessage(escapeHtml(data.data.response));
+    }
+
+    if (state.currentCourseId) {
+      const localMsgs = [
+        { id: Date.now(), role: 'user', content: msg, created_at: new Date().toISOString() },
+        { id: Date.now() + 1, role: 'assistant', content: data.data.response || '', created_at: new Date().toISOString() },
+      ];
+      saveChatToLocalStorage(state.currentCourseId, localMsgs);
     }
   } catch (e) {
     document.querySelectorAll('#chatStream .bubble-ai').forEach(b => {
@@ -3235,6 +4315,251 @@ async function exportLesson(fmt) {
   }
 }
 
+// ==================== 教案质量评估（借鉴 instructional_agents：多指标打分 + 双视角评审） ====================
+let _lastEvalReport = null; // 缓存最近一次评估报告，供复制使用
+
+async function evaluateLesson() {
+  if (!state.currentLessonId) { toast('请先生成或加载教案'); return; }
+  const btn = document.getElementById('evaluateLessonBtn');
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '评估中...';
+  try {
+    const data = await api(`/api/lessons/${state.currentLessonId}/evaluate`, { method: 'POST' });
+    if (data.success === false) {
+      // 结构化失败提示
+      const errCode = data.data?.error_code || 'UNKNOWN';
+      const fb = data.data?.fallbacks || [];
+      appendAiMessage(`<span class="text-red-600">评估失败 [${errCode}]：</span>${escapeHtml(data.message || '')}${fb.length ? '<br><span class="text-xs text-muted">可选操作：' + fb.map((f,i)=>`<button class="underline text-teal-700" onclick="retryEvaluate()">${f}</button>`).join(' / ') + '</span>' : ''}`);
+      return;
+    }
+    const report = data.data || {};
+    _lastEvalReport = report;
+    renderLessonEvaluation(report, data.message || '');
+    // 同时在对话区简要提示
+    const overall = typeof report.overall_score === 'number' ? report.overall_score.toFixed(2) : '-';
+    appendAiMessage(`<b class="text-teal-600">教案评估完成 ✓</b> 综合得分 <b>${overall}/5.0</b>，<span class="text-xs text-muted">详细报告已弹出，含 6 维度打分与教务专家/学生代表双视角评审</span>`);
+  } catch (e) {
+    toast('评估失败: ' + e.message, 3500);
+    console.error('Evaluate failed:', e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+function retryEvaluate() { evaluateLesson(); }
+
+function closeLessonEvalModal() {
+  const m = document.getElementById('lessonEvalModal');
+  if (!m) return;
+  m.classList.add('hidden');
+  m.classList.remove('flex');
+}
+
+// 评分→颜色等级
+function _scoreColor(score) {
+  if (score >= 4.5) return '#16a34a'; // 优秀 深绿
+  if (score >= 3.5) return '#0d9488'; // 良好 青绿
+  if (score >= 2.5) return '#d97706'; // 合格 橙
+  return '#dc2626'; // 不合格 红
+}
+function _scoreLabel(score) {
+  if (score >= 4.5) return '优秀';
+  if (score >= 3.5) return '良好';
+  if (score >= 2.5) return '合格';
+  return '需改进';
+}
+function _starLevel(level) {
+  // level: 1-5
+  const n = Math.max(0, Math.min(5, parseInt(level) || 0));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function renderLessonEvaluation(report, msg) {
+  const body = document.getElementById('evalModalBody');
+  const subtitle = document.getElementById('evalModalSubtitle');
+  if (!body) return;
+
+  const scores = Array.isArray(report.scores) ? report.scores : [];
+  const overall = typeof report.overall_score === 'number' ? report.overall_score : 0;
+  const topIssues = Array.isArray(report.top_issues) ? report.top_issues : [];
+  const chair = report.chair_validation || {};
+  const student = report.student_validation || {};
+  const errMsg = report.error;
+
+  subtitle.textContent = msg || `综合得分 ${overall.toFixed(2)}/5.0`;
+
+  if (errMsg) {
+    body.innerHTML = `<div class="text-center text-red-600 py-8">评估失败：${escapeHtml(errMsg)}</div>`;
+    openEvalModal();
+    return;
+  }
+
+  // ---- 顶部：综合得分环 ----
+  const overallColor = _scoreColor(overall);
+  const overallLabel = _scoreLabel(overall);
+  const circumference = 2 * Math.PI * 52;
+  const dashOffset = circumference * (1 - overall / 5);
+
+  // ---- 多指标打分卡片 ----
+  const scoreCards = scores.map(s => {
+    const sc = typeof s.score === 'number' ? s.score : 0;
+    const col = _scoreColor(sc);
+    const pct = (sc / 5) * 100;
+    return `
+      <div class="border border-rule rounded-lg p-3 bg-white">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <div class="font-medium text-ink text-sm">${escapeHtml(s.metric || '-')}</div>
+          <div class="text-sm font-bold" style="color:${col}">${sc.toFixed(1)}<span class="text-[10px] text-muted">/5.0</span></div>
+        </div>
+        <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full rounded-full" style="width:${pct}%; background:${col}"></div>
+        </div>
+        ${s.thought ? `<div class="text-[11px] text-muted mt-1.5 leading-relaxed">${escapeHtml(s.thought)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  // ---- 主要问题清单 ----
+  const issuesHtml = topIssues.length
+    ? topIssues.map((t, i) => `<li class="text-xs text-ink-2 leading-relaxed"><span class="text-red-500 mr-1">▸</span>${escapeHtml(t)}</li>`).join('')
+    : '<li class="text-xs text-muted">未识别重大问题</li>';
+
+  // ---- 双视角评审 ----
+  function perspectiveCard(p, accentColor, title) {
+    if (!p || typeof p !== 'object') return '';
+    const rating = p.星级 || p.rating || p.stars || 0;
+    const overall = p.总体评价 || p.overall_assessment || p.overall || '';
+    const strengths = p.优点 || p.strengths || '';
+    const improve = p.改进 || p.areas_for_improvement || p.improvements || '';
+    const suggest = p.建议 || p.recommendations || p.suggestions || '';
+    const summary = p.总结 || p.summary || '';
+    function block(label, content) {
+      if (!content) return '';
+      const text = Array.isArray(content) ? content.map(x => `• ${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}`).join('<br>') : escapeHtml(String(content));
+      return `<div class="mb-1.5"><div class="text-[11px] font-semibold text-ink mb-0.5">${label}</div><div class="text-[11px] text-ink-2 leading-relaxed">${text}</div></div>`;
+    }
+    return `
+      <div class="border-l-4 bg-white rounded-r-lg p-3" style="border-color:${accentColor}">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-ink text-sm">${title}</div>
+          ${rating ? `<div class="text-amber-500 text-sm" title="星级">${_starLevel(rating)} <span class="text-[10px] text-muted">(${rating}/5)</span></div>` : ''}
+        </div>
+        ${block('总体评价', overall)}
+        ${block('优点', strengths)}
+        ${block('待改进', improve)}
+        ${block('建议', suggest)}
+        ${summary ? block('总结', summary) : ''}
+      </div>`;
+  }
+
+  body.innerHTML = `
+    <!-- 综合得分区 -->
+    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-teal-50/60 to-white rounded-lg border border-teal-100">
+      <div class="relative w-32 h-32 flex-shrink-0">
+        <svg class="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" stroke="#e5e7eb" stroke-width="8" fill="none"/>
+          <circle cx="60" cy="60" r="52" stroke="${overallColor}" stroke-width="8" fill="none"
+                  stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}" stroke-linecap="round"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <div class="text-2xl font-bold" style="color:${overallColor}">${overall.toFixed(2)}</div>
+          <div class="text-[10px] text-muted">/ 5.0</div>
+          <div class="text-[11px] mt-0.5" style="color:${overallColor}">${overallLabel}</div>
+        </div>
+      </div>
+      <div class="flex-1">
+        <div class="text-sm font-semibold text-ink mb-1">综合质量评估</div>
+        <div class="text-xs text-muted leading-relaxed">基于 6 维度多指标打分聚合，并经教务专家 / 学生代表双视角复核。点击下方各卡片可查看具体评议细节。</div>
+        ${topIssues.length ? `<div class="mt-2 text-[11px] text-red-600">⚠ 识别到 ${topIssues.length} 项主要问题</div>` : ''}
+      </div>
+    </div>
+
+    <!-- 6 维度指标打分 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-teal-600 pl-2">📊 多维度指标打分（${scores.length} 项）</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        ${scoreCards || '<div class="text-xs text-muted col-span-full">无打分数据</div>'}
+      </div>
+    </div>
+
+    <!-- 主要问题清单 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-red-500 pl-2">⚠ 主要问题清单</div>
+      <ul class="space-y-1 pl-2">${issuesHtml}</ul>
+    </div>
+
+    <!-- 双视角评审 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-amber-500 pl-2">👥 双视角评审</div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        ${perspectiveCard(chair, '#0d9488', '🎓 教务专家视角') || '<div class="text-xs text-muted">无教务专家评审</div>'}
+        ${perspectiveCard(student, '#7c3aed', '🎒 学生代表视角') || '<div class="text-xs text-muted">无学生代表评审</div>'}
+      </div>
+    </div>
+  `;
+
+  openEvalModal();
+}
+
+function openEvalModal() {
+  const m = document.getElementById('lessonEvalModal');
+  if (!m) return;
+  m.classList.remove('hidden');
+  m.classList.add('flex');
+}
+
+function copyLessonEvalReport() {
+  if (!_lastEvalReport) { toast('暂无评估报告可复制'); return; }
+  const r = _lastEvalReport;
+  const lines = [];
+  lines.push('# 教案质量评估报告');
+  lines.push('');
+  lines.push(`**综合得分：** ${typeof r.overall_score === 'number' ? r.overall_score.toFixed(2) : '-'} / 5.0`);
+  lines.push('');
+  lines.push('## 多维度指标打分');
+  if (Array.isArray(r.scores) && r.scores.length) {
+    lines.push('| 指标 | 得分 | 评语 |');
+    lines.push('|------|------|------|');
+    r.scores.forEach(s => {
+      const sc = typeof s.score === 'number' ? s.score.toFixed(1) : '-';
+      lines.push(`| ${s.metric || '-'} | ${sc}/5.0 | ${(s.thought || '').replace(/\|/g, '\\|')} |`);
+    });
+  } else { lines.push('_无打分数据_'); }
+  lines.push('');
+  lines.push('## 主要问题清单');
+  if (Array.isArray(r.top_issues) && r.top_issues.length) {
+    r.top_issues.forEach(t => lines.push(`- ${t}`));
+  } else { lines.push('_未识别重大问题_'); }
+  lines.push('');
+  function perspectiveMd(p, title) {
+    if (!p) return '';
+    lines.push(`## ${title}`);
+    if (p.星级 || p.rating) lines.push(`**星级：** ${_starLevel(p.星级 || p.rating)} (${p.星级 || p.rating}/5)`);
+    [['总体评价','总体评价'],['overall_assessment','总体评价'],['overall','总体评价']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${p[k]}`); });
+    [['优点','优点'],['strengths','优点']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['改进','待改进'],['areas_for_improvement','待改进'],['improvements','待改进']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['建议','建议'],['recommendations','建议'],['suggestions','建议']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['总结','总结'],['summary','总结']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${p[k]}`); });
+    lines.push('');
+  }
+  perspectiveMd(r.chair_validation, '教务专家视角');
+  perspectiveMd(r.student_validation, '学生代表视角');
+  if (r.error) lines.push(`\n> 评估异常：${r.error}`);
+  const md = lines.join('\n');
+  try {
+    navigator.clipboard.writeText(md);
+    toast('评估报告已复制到剪贴板');
+  } catch (e) {
+    // 兜底：创建 textarea 选区复制
+    const ta = document.createElement('textarea');
+    ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('评估报告已复制到剪贴板'); }
+    catch (_) { toast('复制失败，请手动选择'); }
+    ta.remove();
+  }
+}
+
 // ==================== PPT 导出设置 ====================
 function openPptModal() {
   if (!state.currentLessonId) { toast('请先选择教案'); return; }
@@ -3333,12 +4658,38 @@ async function generatePpt() {
     closePptModal();
     toast(`✅ PPT已生成：${filename}`);
     // 刷新PPT记录列表
-    await loadPptRecords(state.currentCourseId);
-    // 刷新思维导图
+    await loadPptRecords(state.currentCourseId, state.currentChapterId, state.currentChapter);
     await refreshMindmapIfOpen();
   } catch (e) {
     toast('PPT生成失败: ' + e.message, 5000);
     console.error('PPT generation failed:', e);
+    // J: 改使用 showOperationFailure
+    const retryFn = () => generatePpt();
+    const lowerParamsFn = () => {
+      try {
+        const cur = parseFloat(document.getElementById('llmTemperature').value);
+        const max = parseInt(document.getElementById('llmMaxTokens').value);
+        if (!isNaN(cur)) document.getElementById('llmTemperature').value = (cur / 2).toFixed(2);
+        if (!isNaN(max)) document.getElementById('llmMaxTokens').value = Math.round(max * 1.5);
+      } catch(_) {}
+      // 同时降密度
+      try {
+        const mod = document.querySelector('input[name="pptDensity"][value="sparse"]');
+        if (mod) mod.checked = true;
+      } catch(_) {}
+      generatePpt();
+    };
+    showOperationFailure('PPT 导出失败', e, {
+      retryFn,
+      lowerParamsFn,
+      draftData: {
+        lesson_id: state.currentLessonId,
+        style: document.querySelector('input[name="pptStyle"]:checked')?.value,
+        content_density: document.querySelector('input[name="pptDensity"]:checked')?.value,
+        image_style: document.querySelector('input[name="pptImage"]:checked')?.value,
+      },
+      onHelp: openTutorial,
+    });
   } finally {
     btn.disabled = false;
     btn.textContent = '生成并导出';
@@ -3358,37 +4709,10 @@ document.getElementById('cancelCourse').onclick = () => {
 };
 document.getElementById('confirmCourse').onclick = createCourse;
 
-// ==================== 当前课程三点菜单 ====================
-// 点击三点按钮切换下拉菜单显示
-document.getElementById('courseMenuBtn').onclick = (e) => {
-  e.stopPropagation();
-  const dd = document.getElementById('courseDropdown');
-  dd.classList.toggle('hidden');
-};
-// 点击页面其他区域关闭下拉菜单
-document.addEventListener('click', (e) => {
-  const dd = document.getElementById('courseDropdown');
-  if (!dd.classList.contains('hidden')) {
-    dd.classList.add('hidden');
-  }
-});
-// 新建章
-document.getElementById('courseMenuAddChapter').onclick = () => {
-  document.getElementById('courseDropdown').classList.add('hidden');
+// ==================== 当前课程加号按钮（新建章） ====================
+document.getElementById('courseMenuBtn').onclick = () => {
   if (!state.currentCourseId) { toast('请先选择课程'); return; }
   createChapter(null, -1);
-};
-// 一键知识点提取
-document.getElementById('courseMenuSmartExtract').onclick = () => {
-  document.getElementById('courseDropdown').classList.add('hidden');
-  if (!state.currentCourseId) { toast('请先选择课程'); return; }
-  smartExtractKnowledge();
-};
-// 思维导图
-document.getElementById('courseMenuMindmap').onclick = () => {
-  document.getElementById('courseDropdown').classList.add('hidden');
-  if (!state.currentCourseId) { toast('请先选择课程'); return; }
-  openMindmap();
 };
 
 document.getElementById('uploadBtn').onclick = () => {
@@ -3465,6 +4789,12 @@ chatInput.onkeydown = (e) => {
 document.getElementById('sendBtn').onclick = sendChat;
 document.getElementById('exportMdBtn').onclick = () => exportLesson('markdown');
 document.getElementById('exportDocxBtn').onclick = () => exportLesson('docx');
+document.getElementById('evaluateLessonBtn')?.addEventListener('click', evaluateLesson);
+document.getElementById('closeEvalModalBtn')?.addEventListener('click', closeLessonEvalModal);
+document.getElementById('evalCopyBtn')?.addEventListener('click', copyLessonEvalReport);
+document.getElementById('lessonEvalModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'lessonEvalModal') closeLessonEvalModal();
+});
 
 // PPT 导出设置
 document.getElementById('pptClose').onclick = closePptModal;
@@ -3607,6 +4937,223 @@ setupResizer('resizer2', 'previewPanel', 'middlePanel', {
   maxSize: 800,
 });
 
+// ==================== 左侧栏垂直拖拽调整区域高度 ====================
+function setupVerticalResizer(resizerId, aboveListId, belowSectionId, options = {}) {
+  // options: { storageKey, defaultAboveH, minAboveH, minBelowH, belowListId }
+  // aboveListId: 上方可调整高度的列表容器（如 lessonList）
+  // belowSectionId: 下方 section（用于计算最小高度约束）
+  // belowListId: 下方列表容器ID，不传则自动寻找 section 内第一个 overflow-y 元素
+  const resizer = document.getElementById(resizerId);
+  const aboveList = document.getElementById(aboveListId);
+  const belowSection = document.getElementById(belowSectionId);
+  if (!resizer || !aboveList) return;
+
+  const storageKey = options.storageKey;
+  const defaultAboveH = options.defaultAboveH || 160;
+  const minAboveH = options.minAboveH || 40;
+  const minBelowH = options.minBelowH || 60;
+
+  // 寻找下方列表容器
+  const belowList = options.belowListId
+    ? document.getElementById(options.belowListId)
+    : belowSection
+      ? belowSection.querySelector('.overflow-y-auto, [class*="max-h-"]') || belowSection.querySelector(':scope > div:last-child')
+      : null;
+
+  // 恢复保存的高度
+  if (storageKey) {
+    const savedH = localStorage.getItem(storageKey);
+    if (savedH) {
+      const h = parseInt(savedH);
+      if (!isNaN(h) && h > 30) {
+        aboveList.style.maxHeight = h + 'px';
+        aboveList.style.flex = 'none';
+      }
+    }
+  }
+
+  let isDragging = false;
+  let startY = 0;
+  let startAboveH = 0;
+  let startBelowH = 0;
+
+  function getHeight(el) {
+    return el.getBoundingClientRect().height;
+  }
+
+  function getSectionHeaderH(section) {
+    if (!section) return 0;
+    const header = section.querySelector(':scope > div:first-child');
+    return header ? header.getBoundingClientRect().height : 0;
+  }
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startAboveH = getHeight(aboveList);
+    startBelowH = belowList ? getHeight(belowList) : minBelowH;
+
+    resizer.classList.add('active');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('resizing-v');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dy = e.clientY - startY;
+    const aboveSection = aboveList.closest('.sidebar-section');
+    const container = aboveSection ? aboveSection.parentElement : aboveList.parentElement;
+
+    // 上方 section header 高度 + 下方 section header 高度
+    const aboveHeaderH = getSectionHeaderH(aboveSection);
+    const belowHeaderH = getSectionHeaderH(belowSection);
+
+    // 计算上下列表分别的 min/max 约束
+    const maxAboveH = startAboveH + startBelowH - minBelowH;
+    let newAboveH = Math.max(minAboveH, Math.min(maxAboveH, startAboveH + dy));
+    let newBelowH = startAboveH + startBelowH - newAboveH;
+
+    aboveList.style.maxHeight = newAboveH + 'px';
+    aboveList.style.flex = 'none';
+    if (belowList && newBelowH > 0) {
+      belowList.style.maxHeight = newBelowH + 'px';
+      belowList.style.flex = 'none';
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    resizer.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.body.classList.remove('resizing-v');
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(Math.round(getHeight(aboveList))));
+    }
+  });
+
+  // 双击重置：恢复默认高度，下方列表也重置
+  resizer.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    aboveList.style.maxHeight = defaultAboveH + 'px';
+    aboveList.style.flex = 'none';
+    if (belowList) {
+      belowList.style.maxHeight = '';
+      belowList.style.flex = '';
+    }
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(defaultAboveH));
+    }
+  });
+}
+
+// 初始化左侧栏垂直拖拽
+// vResizer1: 章节树区域(上) vs 下方整体(下)
+// 下方整体已包裹在 #belowChapters (flex-1) 中，章节树固定高度时下方自然延伸填充
+(function() {
+  const resizer = document.getElementById('vResizer1');
+  const aboveSection = document.getElementById('chapterTreeSection');
+  const belowChapters = document.getElementById('belowChapters');
+  if (!resizer || !aboveSection || !belowChapters) return;
+
+  const storageKey = 'v_resizer1_h';
+  const defaultH = 220;
+  const minAboveH = 80;
+  // 下方最小总高度：确保下方三块内容+分隔条不被挤没
+  const minBelowH = 260;
+
+  // 恢复保存的高度
+  if (storageKey) {
+    const savedH = localStorage.getItem(storageKey);
+    if (savedH) {
+      const h = parseInt(savedH);
+      if (!isNaN(h) && h > 50) {
+        aboveSection.style.flex = `0 0 ${h}px`;
+        aboveSection.style.minHeight = minAboveH + 'px';
+      }
+    }
+  }
+
+  let isDragging = false;
+  let startY = 0;
+  let startH = 0;
+
+  function getHeight(el) { return el.getBoundingClientRect().height; }
+
+  resizer.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startY = e.clientY;
+    startH = getHeight(aboveSection);
+    // 切换为固定高度（belowChapters flex-1 自然填充剩余空间）
+    aboveSection.style.flex = `0 0 ${startH}px`;
+    aboveSection.style.transition = 'none';
+
+    resizer.classList.add('active');
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.body.classList.add('resizing-v');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dy = e.clientY - startY;
+    const parent = aboveSection.parentElement;
+    const totalH = getHeight(parent);
+    const resizerH = 6;
+
+    // 允许范围：[minAboveH, 总高度 - 下方最小总高度 - 分隔条高度]
+    const maxAboveH = totalH - minBelowH - resizerH;
+    let newH = startH + dy;
+    newH = Math.max(minAboveH, Math.min(maxAboveH, newH));
+
+    aboveSection.style.flex = `0 0 ${newH}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    aboveSection.style.transition = '';
+    resizer.classList.remove('active');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.body.classList.remove('resizing-v');
+    if (storageKey) {
+      localStorage.setItem(storageKey, String(Math.round(getHeight(aboveSection))));
+    }
+  });
+
+  // 双击重置：恢复章节树为 flex-1
+  resizer.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    aboveSection.style.flex = '';
+    aboveSection.style.maxHeight = '';
+    aboveSection.style.minHeight = '';
+    if (storageKey) localStorage.removeItem(storageKey);
+  });
+})();
+
+// vResizer2: 教案列表(上) vs PPT列表(下) — 显式指定下方列表ID，双向同步调整高度
+setupVerticalResizer('vResizer2', 'lessonList', 'pptSection', {
+  storageKey: 'v_resizer2_h',
+  defaultAboveH: 140,
+  minAboveH: 60,
+  minBelowH: 80,
+  belowListId: 'pptList',
+});
+
+// vResizer3: PPT列表(上) vs 教材列表(下) — 显式指定下方列表ID，双向同步调整高度
+setupVerticalResizer('vResizer3', 'pptList', 'materialSection', {
+  storageKey: 'v_resizer3_h',
+  defaultAboveH: 120,
+  minAboveH: 60,
+  minBelowH: 80,
+  belowListId: 'materialList',
+});
+
 // ==================== 主题切换下拉菜单 ====================
 function initTheme() {
   const saved = localStorage.getItem('theme') || 'light';
@@ -3667,6 +5214,1407 @@ initTheme();
   }).catch(() => {});
 checkApiStatus();
 loadCourses();
+
+// ================================================================
+// 追加：H 系列新增函数（不破坏已有）
+// ================================================================
+
+// ---------- 通用工具：教材类型标签映射 ----------
+const MATERIAL_TYPE_META = {
+  syllabus:      { label: '课程标准/大纲', cls: 'bg-purple-50 text-purple-700 border border-purple-200' },
+  textbook:      { label: '教科书',       cls: 'bg-green-50 text-green-700 border border-green-200' },
+  reference:     { label: '教参教辅',     cls: 'bg-blue-50 text-blue-700 border border-blue-200' },
+  exercise_book: { label: '练习题册',     cls: 'bg-orange-50 text-orange-700 border border-orange-200' },
+  paper:         { label: '学术论文',     cls: 'bg-pink-50 text-pink-700 border border-pink-200' },
+  other:         { label: '其他',         cls: 'bg-gray-100 text-gray-700 border border-gray-200' },
+};
+
+function renderMaterialBadge(m) {
+  const rawType = (m.material_type || m.type || 'other').toString().trim();
+  const meta = MATERIAL_TYPE_META[rawType]
+    || Object.values(MATERIAL_TYPE_META).find(x => x.label === rawType)
+    || MATERIAL_TYPE_META.other;
+  const label = m.material_type_label || meta.label || rawType;
+  const cls = m.color_class || meta.cls;
+  return `<span class="type-badge px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${cls}">${escapeHtml(label)}</span>`;
+}
+
+// ---------- H2: openTutorial / closeTutorial ----------
+function openTutorial() {
+  const m = document.getElementById('tutorialModal');
+  if (!m) return;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  try { m.scrollTop = 0; } catch(_) {}
+}
+function closeTutorial() {
+  const m = document.getElementById('tutorialModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+// 绑定教程按钮 + 遮罩关闭 + 关闭按钮
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('#tutorialBtn');
+  if (btn) { openTutorial(); return; }
+  const tm = document.getElementById('tutorialModal');
+  if (tm) {
+    if (e.target.closest('.tutorial-close') || (e.target === tm)) closeTutorial();
+  }
+  // 提取教材弹窗的关闭
+  const em = document.getElementById('extractMaterialsModal');
+  if (em) {
+    if (e.target.closest('.modal-em-close') || e.target.closest('#closeExtractMatBtn') || e.target === em) {
+      em.classList.add('hidden'); em.classList.remove('flex');
+    }
+  }
+  // 模板库弹窗
+  const tplm = document.getElementById('templateLibraryModal');
+  if (tplm) {
+    if (e.target.closest('.tpl-close') || e.target === tplm) {
+      tplm.classList.add('hidden'); tplm.classList.remove('flex');
+    }
+  }
+  // 知识图谱弹窗
+  const kgm = document.getElementById('knowledgeGraphModal');
+  if (kgm) {
+    if (e.target.closest('.kg-close') || e.target === kgm) {
+      kgm.classList.add('hidden'); kgm.classList.remove('flex');
+    }
+  }
+});
+
+// ---------- H6: 首次引导卡片初始化 ----------
+document.addEventListener('DOMContentLoaded', () => {
+  const card = document.getElementById('tutorialGuideCard');
+  const shown = localStorage.getItem('tutorial_shown');
+  if (card && shown !== '1') {
+    card.classList.remove('hidden');
+  }
+  const closeBtn = document.getElementById('tutorialGuideCloseBtn');
+  if (closeBtn) {
+    closeBtn.onclick = () => {
+      localStorage.setItem('tutorial_shown', '1');
+      if (card) card.classList.add('hidden');
+    };
+  }
+
+  // 知识点面板导出 XLSX
+  const kpExp = document.getElementById('exportKpXlsxBtn');
+  if (kpExp) {
+    kpExp.onclick = async () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      try {
+        const btn = kpExp;
+        const oldT = btn.textContent;
+        btn.disabled = true; btn.textContent = '导出中...';
+        try {
+          const res = await fetch(`/api/courses/${state.currentCourseId}/knowledge-points/export-xlsx`, { method: 'POST' });
+          if (!res.ok) {
+            let msg = `导出失败 (${res.status})`;
+            try { const err = await res.json(); msg = err.detail || err.message || msg; } catch(_) {}
+            throw new Error(msg);
+          }
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition') || '';
+          let filename = '知识点导出.xlsx';
+          const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+          if (starMatch) filename = decodeURIComponent(starMatch[1]);
+          else { const m = disposition.match(/filename="([^"]+)"/); if (m) filename = m[1]; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          toast('已导出：' + filename);
+        } finally {
+          btn.disabled = false; btn.textContent = oldT;
+        }
+      } catch (e) { toast('导出失败: ' + e.message, 3500); }
+    };
+  }
+
+  // ---------- 知识图谱按钮 ----------
+  const kgBtn = document.getElementById('knowledgeGraphBtn');
+  if (kgBtn) {
+    kgBtn.onclick = () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      openKnowledgeGraph();
+    };
+  }
+
+  // ---------- 知识图谱导出 XLSX ----------
+  const kgExpBtn = document.getElementById('kgExportXlsxBtn');
+  if (kgExpBtn) {
+    kgExpBtn.onclick = async () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      try {
+        const btn = kgExpBtn;
+        const oldT = btn.textContent;
+        btn.disabled = true; btn.textContent = '导出中...';
+        try {
+          const res = await fetch(`/api/courses/${state.currentCourseId}/knowledge-points/export-xlsx`, { method: 'POST' });
+          if (!res.ok) {
+            let msg = `导出失败 (${res.status})`;
+            try { const err = await res.json(); msg = err.detail || err.message || msg; } catch(_) {}
+            throw new Error(msg);
+          }
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition') || '';
+          let filename = '知识点导出.xlsx';
+          const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+          if (starMatch) filename = decodeURIComponent(starMatch[1]);
+          else { const m = disposition.match(/filename="([^"]+)"/); if (m) filename = m[1]; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          toast('已导出：' + filename);
+        } finally {
+          btn.disabled = false; btn.textContent = oldT;
+        }
+      } catch (e) { toast('导出失败: ' + e.message, 3500); }
+    };
+  }
+
+  // ---------- 知识图谱刷新 ----------
+  const kgRefBtn = document.getElementById('kgRefreshBtn');
+  if (kgRefBtn) {
+    kgRefBtn.onclick = () => {
+      loadKnowledgeGraph();
+    };
+  }
+
+  // ---------- smartExtractBtn 点击 打开 extractMaterialsModal ----------
+  const smBtn = document.getElementById('smartExtractBtn');
+  if (smBtn) {
+    smBtn.onclick = () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      renderMaterialsCheckList().then(() => {
+        const m = document.getElementById('extractMaterialsModal');
+        if (!m) return;
+        m.classList.remove('hidden'); m.classList.add('flex');
+        const pr = document.getElementById('extractProgress');
+        if (pr) pr.classList.add('hidden');
+        document.getElementById('extractProgressText').textContent = '联网校验中 ...';
+        document.getElementById('extractProgressBar').style.width = '12%';
+      });
+    };
+  }
+  const selAll = document.getElementById('selAllMatBtn');
+  if (selAll) selAll.onclick = () => {
+    document.querySelectorAll('#materialsCheckList input[type="checkbox"].mat-cb').forEach(cb => cb.checked = true);
+  };
+  const unselAll = document.getElementById('unselAllMatBtn');
+  if (unselAll) unselAll.onclick = () => {
+    document.querySelectorAll('#materialsCheckList input[type="checkbox"].mat-cb').forEach(cb => cb.checked = false);
+  };
+  const confirmExtr = document.getElementById('confirmExtractMatBtn');
+  if (confirmExtr) {
+    confirmExtr.onclick = () => {
+      const cbs = Array.from(document.querySelectorAll('#materialsCheckList input[type="checkbox"].mat-cb:checked'));
+      if (cbs.length === 0) { toast('请至少选择一本教材'); return; }
+      const ids = cbs.map(c => parseInt(c.value)).filter(v => !isNaN(v));
+      doSmartExtract(ids);
+    };
+  }
+
+  // ---------- 模板库按钮绑定 ----------
+  const newTplBtn = document.getElementById('newTplBtn');
+  if (newTplBtn) newTplBtn.onclick = async () => {
+    const name = await showPrompt('新建模板名称', '新模板_' + Date.now());
+    if (!name || !name.trim()) return;
+    try { await createTemplate(name.trim()); toast('已创建模板'); } catch(e) { toast('创建失败: '+e.message); }
+  };
+  const uploadTplBtn = document.getElementById('uploadTplBtn');
+  if (uploadTplBtn) uploadTplBtn.onclick = () => document.getElementById('uploadTplInput')?.click();
+  const uploadTplInput = document.getElementById('uploadTplInput');
+  if (uploadTplInput) uploadTplInput.onchange = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try { await uploadTemplate(f, state.currentCourseId); toast('模板导入成功，系统已自动识别Word文档内容'); }
+    catch(err) { toast('导入失败: '+err.message); }
+    finally { uploadTplInput.value = ''; }
+  };
+  const downloadTplBtn = document.getElementById('downloadTplBtn');
+  if (downloadTplBtn) downloadTplBtn.onclick = () => {
+    const tpl = state.templates.find(t => t.id === state.activeTemplateId);
+    if (tpl) downloadTemplateDocx(tpl);
+    else toast('请先选中一个模板');
+  };
+
+  // 失败对话框按钮一次性占位绑定（真正动作由 showOperationFailure 每次覆盖）
+  document.getElementById('failRetryBtn')?.addEventListener('click', () => {
+    const ctx = state.lastFailureCtx;
+    if (ctx && typeof ctx.retryFn === 'function') { closeOperationFailure(); ctx.retryFn(); }
+  });
+  document.getElementById('failLowerBtn')?.addEventListener('click', () => {
+    const ctx = state.lastFailureCtx;
+    if (ctx && typeof ctx.lowerParamsFn === 'function') { closeOperationFailure(); ctx.lowerParamsFn(); }
+    else toast('当前场景不支持降参');
+  });
+  document.getElementById('failTplBtn')?.addEventListener('click', async () => {
+    const ctx = state.lastFailureCtx;
+    if (ctx && typeof ctx.fallbackFn === 'function') { await ctx.fallbackFn(); return; }
+    // 默认打开模板库兜底
+    openTemplateLibrary();
+  });
+  document.getElementById('failDraftBtn')?.addEventListener('click', () => {
+    const ctx = state.lastFailureCtx;
+    if (!ctx || !ctx.draftData) { toast('没有可保存的草稿'); return; }
+    try {
+      const blob = new Blob([JSON.stringify(ctx.draftData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `draft_${ctx.title || 'failure'}_${Date.now()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast('草稿已下载');
+    } catch(e) { toast('保存草稿失败: '+e.message); }
+  });
+  document.getElementById('failHelpBtn')?.addEventListener('click', () => {
+    const ctx = state.lastFailureCtx;
+    closeOperationFailure();
+    if (ctx && typeof ctx.onHelp === 'function') ctx.onHelp();
+    else openTutorial();
+  });
+});
+
+// ---------- H1: showOperationFailure ----------
+function showOperationFailure(title, err, ctx = {}) {
+  const m = document.getElementById('failureModal');
+  if (!m) return;
+  state.lastFailureCtx = { ...ctx, title: title || '操作失败' };
+  const errMsg = err?.message || String(err || '未知错误');
+  document.getElementById('failureMessage').textContent = (title ? `[${title}] ` : '') + errMsg;
+  let code = '';
+  if (err) {
+    if (err.code) code += ` error_code=${err.code}`;
+    if (err.status) code += ` status=${err.status}`;
+    if (err.error_code) code += ` code=${err.error_code}`;
+  }
+  if (!code) code = 'error_code=UNKNOWN';
+  document.getElementById('failureCode').textContent = code.trim();
+
+  // 根据错误码或错误信息智能推荐解决方案
+  const SOLUTION_MAP = {
+    'EXTRACT_ALL_FAILED': [
+      '💡 解决方案：',
+      '  1️⃣ 检查网络连接是否正常',
+      '  2️⃣ 检查 DeepSeek API Key 是否正确（设置 → LLM 配置）',
+      '  3️⃣ 减少选择的教材数量（建议每次 ≤ 3 份）',
+      '  4️⃣ 改用「章节提取」方式，逐章提取知识点',
+      '  5️⃣ 若持续失败，可点击下方「降参重试」降低参数后重试',
+    ],
+    'PPT_LLM_AND_FALLBACK_FAILED': [
+      '💡 解决方案：',
+      '  1️⃣ 检查 DeepSeek API Key 是否正确',
+      '  2️⃣ 减少生成内容的篇幅',
+      '  3️⃣ 点击「降参重试」降低参数重试',
+      '  4️⃣ 尝试先生成教案，再基于教案生成 PPT',
+    ],
+    'PPT_GENERATE_ERROR': [
+      '💡 解决方案：',
+      '  1️⃣ 检查 DeepSeek API Key 是否正确',
+      '  2️⃣ 点击「重试」按钮重新生成',
+      '  3️⃣ 在设置中调高 Token 上限后重试',
+    ],
+    'UNKNOWN': [
+      '💡 解决方案：',
+      '  1️⃣ 检查网络连接是否正常',
+      '  2️⃣ 检查 DeepSeek API Key 配置是否正确',
+      '  3️⃣ 刷新页面后重试',
+      '  4️⃣ 点击下方「打开帮助」查看详细使用教程',
+    ],
+  };
+  const matchedKey = Object.keys(SOLUTION_MAP).find(k => code.includes(k));
+  const solutions = SOLUTION_MAP[matchedKey] || SOLUTION_MAP['UNKNOWN'];
+  const solEl = document.getElementById('failureSolution');
+  if (solEl) solEl.innerHTML = solutions.map(s => `<div class="text-[11px] leading-relaxed">${s}</div>`).join('');
+  m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closeOperationFailure() {
+  const m = document.getElementById('failureModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+  state.lastFailureCtx = null;
+}
+
+// ---------- H3: smart-extract 相关 ----------
+async function renderMaterialsCheckList() {
+  const box = document.getElementById('materialsCheckList');
+  if (!box) return;
+  if (!state.currentCourseId) { box.innerHTML = '<div class="text-center text-muted py-4">请先选择课程</div>'; return; }
+  try {
+    const data = await api(`/api/courses/${state.currentCourseId}/materials`);
+    const arr = data.data || [];
+    if (arr.length === 0) { box.innerHTML = '<div class="text-center text-muted py-4">当前课程暂无教材，请先上传</div>'; return; }
+    box.innerHTML = arr.map(m => `
+      <label class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-rule hover:bg-teal-50 cursor-pointer">
+        <input type="checkbox" class="mat-cb w-3.5 h-3.5 accent-teal-600" value="${m.id}">
+        <span class="flex-1 min-w-0 truncate text-xs text-ink">${escapeHtml(m.filename)}</span>
+        ${renderMaterialBadge(m)}
+      </label>
+    `).join('');
+  } catch (e) {
+    box.innerHTML = `<div class="text-xs text-red-600 p-2">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function doSmartExtract(materialIds) {
+  if (!state.currentCourseId) { toast('请先选择课程'); return; }
+  const progressEl = document.getElementById('extractProgress');
+  const progressText = document.getElementById('extractProgressText');
+  const progressBar = document.getElementById('extractProgressBar');
+  const progressCount = document.getElementById('extractProgressCount');
+  const progressPoints = document.getElementById('extractProgressPoints');
+  const confirmBtn = document.getElementById('confirmExtractMatBtn');
+  if (progressEl) progressEl.classList.remove('hidden');
+  if (progressBar) progressBar.style.width = '0%';
+  if (progressPoints) progressPoints.classList.add('hidden');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '处理中...'; }
+
+  let pollTimer = null;
+  let done = false;
+
+  const startPolling = () => {
+    pollTimer = setInterval(async () => {
+      if (done) return;
+      try {
+        const data = await api(`/api/courses/${state.currentCourseId}/extract-progress`);
+        const p = data.data;
+        if (p.total > 0) {
+          const pct = Math.round((p.current / p.total) * 100);
+          if (progressBar) progressBar.style.width = Math.min(pct, 92) + '%';
+          if (progressText) progressText.textContent = `正在提取知识点（第 ${p.current}/${p.total} 段）...`;
+          if (progressCount) progressCount.textContent = `(${p.points.length} 个知识点已提取)`;
+          if (p.points && p.points.length > 0) {
+            progressPoints.classList.remove('hidden');
+            const existingList = progressPoints.querySelector('.kp-list');
+            let listEl = existingList;
+            if (!listEl) {
+              listEl = document.createElement('div');
+              listEl.className = 'kp-list space-y-0.5';
+              progressPoints.appendChild(listEl);
+            }
+            listEl.innerHTML = p.points.map(kp =>
+              `<div class="flex items-center gap-1 text-teal-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0"></span>
+                <span>${escapeHtml(kp.name || '')}</span>
+              </div>`
+            ).join('');
+          }
+        }
+      } catch (e) {
+        // 轮询失败静默处理
+      }
+    }, 800);
+  };
+
+  startPolling();
+
+  try {
+    const res = await api(`/api/courses/${state.currentCourseId}/smart-extract-points`, {
+      method: 'POST',
+      body: JSON.stringify({ material_ids: materialIds || [] }),
+    });
+    done = true;
+    if (pollTimer) clearInterval(pollTimer);
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = '提取完成 ✓';
+    if (progressCount) progressCount.textContent = '';
+
+    const kpCount = (res.data && (res.data.count || res.data.points_count))
+      || (Array.isArray(res.data?.points) ? res.data.points.length : 0)
+      || 0;
+    toast(`✅ 一键提取完成，共 ${kpCount} 个知识点`, 3200);
+    appendAiMessage(`<span class="text-teal-600 font-medium">✅ 一键提取知识点完成</span>，共提取 <b>${kpCount}</b> 个知识点。`);
+
+    if (state.currentCourseId) {
+      const localMsgs = [
+        { id: Date.now(), role: 'assistant', content: `✅ 一键提取知识点完成，共提取 ${kpCount} 个知识点。`, created_at: new Date().toISOString() },
+      ];
+      saveChatToLocalStorage(state.currentCourseId, localMsgs);
+    }
+
+    setTimeout(() => {
+      const em = document.getElementById('extractMaterialsModal');
+      if (em) { em.classList.add('hidden'); em.classList.remove('flex'); }
+      if (progressEl) progressEl.classList.add('hidden');
+    }, 600);
+
+    const ok = await showConfirm('导出 XLSX', `一键提取完成，共 ${kpCount} 个知识点。\n是否立即按模板导出为 XLSX？`);
+    if (ok) document.getElementById('exportKpXlsxBtn')?.click();
+
+    setTimeout(() => {
+      toast('💡 可在课程菜单中查看「知识图谱」浏览知识点关系', 4000);
+    }, 500);
+  } catch (e) {
+    done = true;
+    if (pollTimer) clearInterval(pollTimer);
+    appendAiMessage(`<span class="text-red-600">一键提取失败：</span>${escapeHtml(e.message)}`);
+    showOperationFailure('一键提取知识点失败', e, {
+      retryFn: () => doSmartExtract(materialIds),
+      lowerParamsFn: () => {
+        try {
+          const cur = parseFloat(document.getElementById('llmTemperature').value);
+          const max = parseInt(document.getElementById('llmMaxTokens').value);
+          if (!isNaN(cur)) document.getElementById('llmTemperature').value = (cur / 2).toFixed(2);
+          if (!isNaN(max)) document.getElementById('llmMaxTokens').value = Math.round(max * 1.5);
+        } catch(_) {}
+        doSmartExtract(materialIds.slice(0, Math.max(1, Math.ceil(materialIds.length / 2))));
+      },
+      draftData: { course_id: state.currentCourseId, material_ids: materialIds },
+      onHelp: openTutorial,
+    });
+  } finally {
+    if (pollTimer) clearInterval(pollTimer);
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确定'; }
+  }
+}
+
+// ---------- H4: 模板库相关 ----------
+function openTemplateLibrary() {
+  const m = document.getElementById('templateLibraryModal');
+  if (!m) return;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  loadTemplates();
+}
+function closeTemplateLibrary() {
+  const m = document.getElementById('templateLibraryModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+async function loadTemplates() {
+  if (!state.currentCourseId) return;
+  try {
+    const data = await api(`/api/lesson-templates?course_id=${state.currentCourseId}`);
+    state.templates = Array.isArray(data.data) ? data.data : [];
+    // 若无激活项则默认 is_default
+    if (!state.activeTemplateId || !state.templates.some(t => t.id === state.activeTemplateId)) {
+      const def = state.templates.find(t => t.is_default) || state.templates[0];
+      state.activeTemplateId = def ? def.id : null;
+    }
+    renderTemplateList();
+    renderActiveTemplateInfo();
+  } catch (e) { toast('加载模板库失败: ' + e.message); }
+}
+
+function renderTemplateList() {
+  const el = document.getElementById('tplListGroup');
+  if (!el) return;
+  if (state.templates.length === 0) { el.innerHTML = '<div class="text-center text-muted py-6">暂无模板，点击"+新建模板"</div>'; return; }
+  el.innerHTML = state.templates.map(t => {
+    const activeCls = t.id === state.activeTemplateId ? 'bg-teal-100 border-teal-500' : 'bg-white border-rule';
+    return `
+      <div class="tpl-item border rounded-md p-2 cursor-pointer flex items-start gap-2 hover:bg-teal-50 ${activeCls}" data-id="${t.id}">
+        <div class="flex-1 min-w-0" data-role="activate">
+          <div class="text-xs font-medium text-ink truncate flex items-center gap-1">
+            <span>#${t.id}</span>
+            <span>${escapeHtml(t.name || '未命名')}</span>
+            ${t.is_default ? '<span class="tag bg-amber-100 text-amber-700">⭐默认</span>' : ''}
+          </div>
+          <div class="text-[10px] text-muted truncate">${escapeHtml((t.description || '').toString().slice(0, 60))}</div>
+        </div>
+        <div class="flex items-center gap-0.5 text-xs" data-role="actions">
+          <button class="tpl-act px-1 rounded hover:bg-teal-100 text-teal-700" data-act="edit" title="编辑名称">✎</button>
+          <button class="tpl-act px-1 rounded hover:bg-teal-100 text-teal-700" data-act="download" title="下载Word文档">⬇</button>
+          <button class="tpl-act px-1 rounded hover:bg-amber-100 text-amber-700" data-act="default" title="设为默认">★</button>
+          <button class="tpl-act px-1 rounded hover:bg-red-100 text-red-600 ${t.is_default ? 'opacity-30 cursor-not-allowed' : ''}" data-act="delete" title="删除" ${t.is_default ? 'disabled' : ''}>🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  el.querySelectorAll('.tpl-item').forEach(it => {
+    it.querySelector('[data-role="activate"]').onclick = () => {
+      state.activeTemplateId = parseInt(it.dataset.id);
+      renderTemplateList();
+      renderActiveTemplateInfo();
+    };
+    it.querySelectorAll('.tpl-act').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        if (btn.hasAttribute('disabled') && btn.getAttribute('disabled') !== 'false') return;
+        const act = btn.dataset.act;
+        const id = parseInt(it.dataset.id);
+        const tpl = state.templates.find(t => t.id === id);
+        if (!tpl) return;
+        try {
+          if (act === 'edit') {
+            const name = await showPrompt('重命名模板', tpl.name || '');
+            if (name === null || !name.trim()) return;
+            await api(`/api/lesson-templates/${id}`, { method: 'PUT', body: JSON.stringify({ name: name.trim() }) });
+            toast('已重命名'); loadTemplates();
+          } else if (act === 'download') {
+            downloadTemplateDocx(tpl);
+          } else if (act === 'default') {
+            await setDefaultTemplate(id);
+          } else if (act === 'delete') {
+            if (tpl.is_default) return;
+            if (!(await showConfirm('删除模板', `确认删除模板「${tpl.name}」?`))) return;
+            await deleteTemplate(id);
+          }
+        } catch (err) { toast('操作失败: ' + err.message); }
+      };
+    });
+  });
+}
+
+async function createTemplate(name) {
+  const payload = {
+    name: name || '新模板',
+    course_id: state.currentCourseId || null,
+    structure_json: {
+      title: {},
+      info_fields: ['course_name','chapter','teacher','duration','date'],
+      goal_table: [],
+      key_diff_table: [],
+      stages: [{ name: '导入', minutes: 5, activities: [] }],
+      board_design: {},
+      homework: {},
+      reflection: {},
+    },
+  };
+  const data = await api('/api/lesson-templates', { method: 'POST', body: JSON.stringify(payload) });
+  await loadTemplates();
+  return data.data;
+}
+
+async function deleteTemplate(id) {
+  await api(`/api/lesson-templates/${id}`, { method: 'DELETE' });
+  toast('模板已删除');
+  if (state.activeTemplateId === id) state.activeTemplateId = null;
+  await loadTemplates();
+}
+
+async function setDefaultTemplate(id) {
+  await api(`/api/lesson-templates/${id}/set-default`, { method: 'POST' });
+  toast('已设为默认模板');
+  await loadTemplates();
+}
+
+function downloadTemplateDocx(tpl) {
+  // 从服务器下载 .docx 文件
+  const a = document.createElement('a');
+  a.href = `/api/lesson-templates/${tpl.id}/download`;
+  a.download = `${(tpl.name || '教案模板').replace(/[\\/*?:"<>|]/g, '_')}.docx`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function uploadTemplate(file, course_id) {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (course_id) fd.append('course_id', String(course_id));
+  const data = await api('/api/lesson-templates/import', { method: 'POST', body: fd });
+  await loadTemplates();
+  return data.data;
+}
+
+// ==================== 知识图谱相关 ====================
+function openKnowledgeGraph() {
+  const m = document.getElementById('knowledgeGraphModal');
+  if (!m) return;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  loadKnowledgeGraph();
+}
+function closeKnowledgeGraph() {
+  const m = document.getElementById('knowledgeGraphModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+async function loadKnowledgeGraph() {
+  if (!state.currentCourseId) return;
+  const statsEl = document.getElementById('kgStats');
+  const courseNameEl = document.getElementById('kgCourseName');
+  const relationView = document.getElementById('kgRelationView');
+  const tableBody = document.getElementById('kgTableBody');
+  const tableCount = document.getElementById('kgTableCount');
+  statsEl.textContent = '加载中...';
+  try {
+    const data = await api(`/api/courses/${state.currentCourseId}/knowledge-graph`);
+    const graph = data.data;
+    if (!graph || !graph.nodes) {
+      statsEl.textContent = '暂无知识点数据';
+      document.getElementById('kgEmptyHint').style.display = '';
+      document.getElementById('kgCytoscape').style.display = 'none';
+      tableBody.innerHTML = '';
+      return;
+    }
+    if (courseNameEl) courseNameEl.textContent = graph.course_name || '';
+    statsEl.textContent = `共 ${graph.node_count} 个知识点，${graph.edge_count} 条语义关系`;
+    if (tableCount) tableCount.textContent = graph.node_count;
+    renderKgRelationView(relationView, graph.nodes, graph.edges);
+    renderKgTableView(tableBody, graph.nodes);
+  } catch (e) {
+    statsEl.textContent = '加载失败';
+    document.getElementById('kgEmptyHint').textContent = `加载失败：${e.message}`;
+  }
+}
+
+// Cytoscape 实例缓存
+let kgCytoscapeInstance = null;
+
+function renderKgRelationView(container, nodes, edges) {
+  const cyContainer = document.getElementById('kgCytoscape');
+  const emptyHint = document.getElementById('kgEmptyHint');
+  if (!cyContainer || !window.cytoscape) {
+    // 降级：无 Cytoscape 库时使用文本视图
+    if (emptyHint) emptyHint.style.display = '';
+    if (cyContainer) cyContainer.style.display = 'none';
+    container.querySelector('#kgEmptyHint').textContent = '图谱库未加载，请检查网络';
+    return;
+  }
+  if ((!nodes || nodes.length === 0) && (!edges || edges.length === 0)) {
+    if (emptyHint) { emptyHint.style.display = ''; emptyHint.textContent = '暂无知识点数据'; }
+    cyContainer.style.display = 'none';
+    return;
+  }
+  if (emptyHint) emptyHint.style.display = 'none';
+  cyContainer.style.display = '';
+
+  // 构造 Cytoscape 元素
+  const cyElements = [];
+  const nodeMap = {};
+  nodes.forEach(n => {
+    nodeMap[n.name] = true;
+    // 根据层级和标签决定节点类型
+    let nodeType = n.layer || 'core';
+    let tagFlags = [];
+    if (n.is_key_point) tagFlags.push('key');
+    if (n.is_difficult) tagFlags.push('diff');
+    if (n.is_exam_point) tagFlags.push('exam');
+    cyElements.push({
+      data: {
+        id: n.name,
+        label: n.name,
+        layer: nodeType,
+        tags: tagFlags.join(','),
+        definition: n.definition || '',
+        prerequisites: (n.prerequisites || []).join('、')
+      }
+    });
+  });
+  (edges || []).forEach(e => {
+    if (nodeMap[e.source] && nodeMap[e.target]) {
+      cyElements.push({
+        data: {
+          source: e.source,
+          target: e.target,
+          relType: e.rel_type || 'prerequisite',
+          label: e.label || '前置依赖'
+        }
+      });
+    }
+  });
+
+  // 销毁旧实例
+  if (kgCytoscapeInstance) {
+    kgCytoscapeInstance.destroy();
+    kgCytoscapeInstance = null;
+  }
+
+  // 青绿水墨配色 (与项目主题一致)
+  kgCytoscapeInstance = cytoscape({
+    container: cyContainer,
+    elements: cyElements,
+    minZoom: 0.3,
+    maxZoom: 3,
+    layout: {
+      name: 'breadthfirst',
+      directed: true,
+      spacingFactor: 1.5,
+      padding: 30,
+      circle: false,
+      animate: true,
+      animationDuration: 300
+    },
+    style: [
+      { selector: 'core', style: {
+        'background-color': '#f0f7f5',
+        'background-image': 'linear-gradient(#d9ebe6 1px, transparent 1px), linear-gradient(90deg, #d9ebe6 1px, transparent 1px)',
+        'background-size': '25px 25px'
+      }},
+      { selector: 'edge', style: {
+        'width': 2,
+        'line-color': '#7fbab0',
+        'target-arrow-shape': 'triangle',
+        'target-arrow-color': '#4a9d8f',
+        'curve-style': 'bezier',
+        'arrow-scale': 1.2,
+        'label': 'data(label)',
+        'font-size': '9px',
+        'color': '#4a9d8f',
+        'text-background-color': '#ffffff',
+        'text-background-opacity': 0.8,
+        'text-background-padding': '2px',
+        'text-rotation': 'autorotate',
+        'text-margin-y': '-6px',
+        'font-family': 'Noto Sans SC, Arial, sans-serif'
+      }},
+      // 关系类型配色
+      { selector: 'edge[relType="prerequisite"]', style: { 'line-color': '#4a9d8f', 'target-arrow-color': '#4a9d8f', 'color': '#4a9d8f' }},
+      { selector: 'edge[relType="支撑"]', style: { 'line-color': '#2196F3', 'target-arrow-color': '#2196F3', 'color': '#2196F3', 'line-style': 'dashed' }},
+      { selector: 'edge[relType="组成"]', style: { 'line-color': '#FF9800', 'target-arrow-color': '#FF9800', 'color': '#FF9800', 'line-style': 'dotted' }},
+      { selector: 'edge[relType="对比"]', style: { 'line-color': '#9C27B0', 'target-arrow-color': '#9C27B0', 'color': '#9C27B0', 'line-style': 'dashed' }},
+      { selector: 'edge[relType="应用"]', style: { 'line-color': '#F44336', 'target-arrow-color': '#F44336', 'color': '#F44336', 'line-style': 'dotted' }},
+      // 基础层 (青绿淡色)
+      { selector: 'node[layer="basic"]', style: {
+        'background-color': '#7fbab0',
+        'shape': 'round-rectangle',
+        'font-size': '11px',
+        'padding': '8px'
+      }},
+      // 核心层 (青绿主色)
+      { selector: 'node[layer="core"]', style: {
+        'background-color': '#2e7d6e',
+        'shape': 'round-rectangle',
+        'font-size': '12px',
+        'padding': '10px'
+      }},
+      // 拓展层 (墨色)
+      { selector: 'node[layer="extension"]', style: {
+        'background-color': '#5a4030',
+        'shape': 'round-rectangle',
+        'font-size': '11px',
+        'padding': '8px'
+      }},
+      // 标记为重点的节点加金色边框
+      { selector: 'node[tags*="key"]', style: {
+        'border-width': 3,
+        'border-color': '#d4a017',
+        'border-style': 'solid'
+      }},
+      // 标记为难点的节点加红色边框
+      { selector: 'node[tags*="diff"]', style: {
+        'border-width': 3,
+        'border-color': '#c0392b',
+        'border-style': 'dashed'
+      }},
+      // 标记为考点的节点加紫色边框
+      { selector: 'node[tags*="exam"]', style: {
+        'border-width': 3,
+        'border-color': '#8e44ad',
+        'border-style': 'double'
+      }},
+      // 通用节点样式
+      { selector: 'node', style: {
+        'label': 'data(label)',
+        'color': '#ffffff',
+        'text-wrap': 'wrap',
+        'text-max-width': '90px',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'font-family': 'Noto Sans SC, Arial, sans-serif',
+        'font-weight': '600',
+        'width': 'label',
+        'height': 'label',
+        'border-width': 1,
+        'border-color': '#b3d7cd'
+      }},
+      // 选中节点高亮
+      { selector: 'node:selected', style: {
+        'background-color': '#236658',
+        'border-width': 4,
+        'border-color': '#d4a017'
+      }}
+    ],
+    wheelSensitivity: 0.2
+  });
+
+  // 点击节点显示详情
+  kgCytoscapeInstance.on('tap', 'node', function(evt) {
+    const node = evt.target;
+    const def = node.data('definition');
+    const prereq = node.data('prerequisites');
+    const tags = node.data('tags');
+    let tagText = '';
+    if (tags) {
+      const tagArr = tags.split(',').filter(Boolean);
+      const tagMap = { key: '重点', diff: '难点', exam: '考点' };
+      tagText = tagArr.map(t => tagMap[t] || t).join('、');
+    }
+    const layer = node.data('layer');
+    const layerMap = { basic: '基础', core: '核心', extension: '拓展' };
+    const layerText = layerMap[layer] || layer;
+    const info = `【${node.data('label')}】 层级：${layerText}${tagText ? ' | 标签：' + tagText : ''}${prereq ? ' | 前置：' + prereq : ''}${def ? '\n' + def : ''}`;
+    toast(info, 5000);
+  });
+
+  // 绑定缩放控件
+  bindKgZoomControls();
+  updateKgZoomIndicator();
+}
+
+function bindKgZoomControls() {
+  const zoomIn = document.getElementById('kgZoomIn');
+  const zoomOut = document.getElementById('kgZoomOut');
+  const fitBtn = document.getElementById('kgFit');
+  if (zoomIn) zoomIn.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.zoom({ level: kgCytoscapeInstance.zoom() * 1.2, renderedPosition: { x: kgCytoscapeInstance.width()/2, y: kgCytoscapeInstance.height()/2 } }); updateKgZoomIndicator(); };
+  if (zoomOut) zoomOut.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.zoom({ level: kgCytoscapeInstance.zoom() / 1.2, renderedPosition: { x: kgCytoscapeInstance.width()/2, y: kgCytoscapeInstance.height()/2 } }); updateKgZoomIndicator(); };
+  if (fitBtn) fitBtn.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.fit(undefined, 30); updateKgZoomIndicator(); };
+  if (kgCytoscapeInstance) kgCytoscapeInstance.on('zoom pan', updateKgZoomIndicator);
+}
+
+function updateKgZoomIndicator() {
+  const ind = document.getElementById('kgZoomIndicator');
+  if (ind && kgCytoscapeInstance) ind.textContent = Math.round(kgCytoscapeInstance.zoom() * 100) + '%';
+}
+
+function renderKgTableView(tableBody, nodes) {
+  if (!nodes || nodes.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无知识点</td></tr>';
+    return;
+  }
+  let html = '';
+  nodes.forEach((node, i) => {
+    const layerLabel = node.layer === 'basic' ? '基础' : (node.layer === 'core' ? '核心' : '拓展');
+    const tags = [];
+    if (node.is_key_point) tags.push('重点');
+    if (node.is_difficult) tags.push('难点');
+    if (node.is_exam_point) tags.push('考点');
+    const tagStr = tags.length ? tags.join('、') : '—';
+    const prereqStr = (node.prerequisites && node.prerequisites.length)
+      ? node.prerequisites.join('、') : '—';
+    html += `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} border-t border-rule hover:bg-teal-50/50">
+      <td class="px-2 py-1.5 border-r text-muted">${i + 1}</td>
+      <td class="px-2 py-1.5 border-r font-medium text-ink">${escapeHtml(node.name || '')}</td>
+      <td class="px-2 py-1.5 border-r">
+        <span class="tag ${node.layer === 'basic' ? 'tag-basic' : (node.layer === 'core' ? 'tag-core' : 'tag-ext')}">${layerLabel}</span>
+      </td>
+      <td class="px-2 py-1.5 border-r">
+        ${tags.length ? tags.map(t => `<span class="tag ${t === '重点' ? 'tag-key' : (t === '难点' ? 'tag-diff' : 'tag-exam')}">${t}</span>`).join(' ') : '<span class="text-muted">—</span>'}
+      </td>
+      <td class="px-2 py-1.5 border-r text-muted text-[10px]">${escapeHtml(prereqStr)}</td>
+      <td class="px-2 py-1.5 text-muted text-[10px] leading-snug max-w-xs truncate">${escapeHtml((node.definition || '').slice(0, 120))}</td>
+    </tr>`;
+  });
+  tableBody.innerHTML = html;
+}
+
+// ==================== 模板就地编辑 ====================
+let _templateEditState = { editing: false, originalJson: null };
+
+function renderActiveTemplateInfo() {
+  const nameEl = document.getElementById('activeTplName');
+  const card = document.getElementById('tplInfoCard');
+  if (!card) return;
+  const tpl = state.templates.find(t => t.id === state.activeTemplateId);
+  if (!tpl) {
+    if (nameEl) nameEl.textContent = '未选择';
+    card.innerHTML = '<div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>';
+    return;
+  }
+  if (_templateEditState.editing) {
+    renderTemplateEditor(card, tpl);
+    return;
+  }
+  if (nameEl) nameEl.textContent = `${tpl.name || '未命名'}${tpl.is_default ? ' ⭐默认' : ''}`;
+  const sj = tpl.structure_json || tpl.structure || tpl.json || {};
+  const defaults = sj.defaults || sj;
+  let infoHtml = `<div class="space-y-2">`;
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mb-1">基本信息</div>`;
+  infoHtml += `<div class="grid grid-cols-2 gap-1 text-[10px]">`;
+  if (defaults.course_name) infoHtml += `<div><span class="text-muted">课程名称：</span>${escapeHtml(defaults.course_name)}</div>`;
+  if (defaults.chapter) infoHtml += `<div><span class="text-muted">章节：</span>${escapeHtml(defaults.chapter)}</div>`;
+  infoHtml += `<div><span class="text-muted">总课时：</span>${defaults.total_minutes || 90} 分钟</div>`;
+  infoHtml += `</div>`;
+  if (defaults.knowledge_goal || defaults.ability_goal || defaults.value_goal) {
+    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学目标</div>`;
+    if (defaults.knowledge_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">知识目标：</span>${escapeHtml(String(defaults.knowledge_goal).slice(0, 80))}</div>`;
+    if (defaults.ability_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">能力目标：</span>${escapeHtml(String(defaults.ability_goal).slice(0, 80))}</div>`;
+    if (defaults.value_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">素质目标：</span>${escapeHtml(String(defaults.value_goal).slice(0, 80))}</div>`;
+  }
+  const kp = defaults.key_points || [];
+  const dp = defaults.difficult_points || [];
+  if (kp.length || dp.length) {
+    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学重难点</div>`;
+    if (kp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">重点：</span>${kp.length} 个</div>`;
+    if (dp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">难点：</span>${dp.length} 个</div>`;
+  }
+  const stages = defaults.stages || [];
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学过程</div>`;
+  if (stages.length) {
+    infoHtml += `<div class="text-[10px]">共 ${stages.length} 个阶段：</div>`;
+    infoHtml += `<ul class="list-disc list-inside text-[10px] text-muted">`;
+    stages.forEach(s => {
+      infoHtml += `<li>${escapeHtml(s.name || '')}（${s.duration_min || 10}分钟）</li>`;
+    });
+    infoHtml += `</ul>`;
+  } else {
+    infoHtml += `<div class="text-[10px] text-muted">（未设置）</div>`;
+  }
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">其他</div>`;
+  infoHtml += `<div class="text-[10px]">`;
+  infoHtml += `<div><span class="text-muted">板书设计：</span>${defaults.board_design ? '✓ 已设置' : '—'}</div>`;
+  const hw = defaults.homework || [];
+  infoHtml += `<div><span class="text-muted">课后作业：</span>${hw.length ? hw.length + ' 项' : '—'}</div>`;
+  infoHtml += `<div><span class="text-muted">教学反思：</span>${defaults.reflection ? '✓ 已设置' : '—'}</div>`;
+  infoHtml += `</div>`;
+  infoHtml += `</div>`;
+  infoHtml += `<div class="mt-3 flex justify-end gap-2 pt-2 border-t border-rule">`;
+  infoHtml += `<button id="editTplContentBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">✏ 编辑内容</button>`;
+  infoHtml += `</div>`;
+  card.innerHTML = infoHtml;
+  setTimeout(() => {
+    const editBtn = document.getElementById('editTplContentBtn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        _templateEditState.editing = true;
+        _templateEditState.originalJson = JSON.parse(JSON.stringify(tpl.structure_json || {}));
+        renderActiveTemplateInfo();
+      };
+    }
+  }, 0);
+}
+
+function renderTemplateEditor(card, tpl) {
+  card.innerHTML = `
+    <div class="space-y-2">
+      <div class="font-medium text-teal-700 border-b pb-1 mb-1">编辑模板内容（Word）</div>
+      <div class="text-[10px] text-muted mb-1">通过 Word 文档编辑模板，无需处理 JSON</div>
+      <div class="flex flex-col gap-2 py-2">
+        <button id="tplDownloadWordBtn" class="btn-primary px-3 py-2 rounded text-xs">⬇ 下载模板Word文档</button>
+        <div class="flex items-center gap-2 text-muted text-[10px]">
+          <span class="flex-1 border-t border-rule"></span>
+          <span>或</span>
+          <span class="flex-1 border-t border-rule"></span>
+        </div>
+        <button id="tplUploadWordBtn" class="btn-ghost px-3 py-2 rounded text-xs">📄 上传已编辑的Word文档</button>
+        <input id="tplUploadWordInput" type="file" accept=".docx" class="hidden">
+      </div>
+      <div id="tplWordEditStatus" class="text-[10px] text-muted text-center"></div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button id="tplEditorCancelBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">取消</button>
+      </div>
+    </div>
+  `;
+  setTimeout(() => {
+    document.getElementById('tplDownloadWordBtn').onclick = () => {
+      downloadTemplateDocx(tpl);
+      document.getElementById('tplWordEditStatus').textContent = '✅ 已下载，请在 Word 中编辑后上传';
+    };
+    document.getElementById('tplUploadWordBtn').onclick = () => {
+      document.getElementById('tplUploadWordInput').click();
+    };
+    document.getElementById('tplUploadWordInput').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await uploadEditedTemplate(tpl, file);
+      e.target.value = '';
+    };
+    document.getElementById('tplEditorCancelBtn').onclick = () => {
+      _templateEditState.editing = false;
+      _templateEditState.originalJson = null;
+      renderActiveTemplateInfo();
+    };
+  }, 0);
+}
+
+async function uploadEditedTemplate(tpl, file) {
+  const statusEl = document.getElementById('tplWordEditStatus');
+  try {
+    statusEl.textContent = '⏳ 上传解析中...';
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`/api/lesson-templates/${tpl.id}/upload-docx`, {
+      method: 'PUT',
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = '上传失败';
+      try { const err = await res.json(); msg = err.detail || err.message || msg; } catch(_) {}
+      throw new Error(msg);
+    }
+    statusEl.textContent = '✅ 模板已从 Word 文档更新';
+    toast('模板已从 Word 文档更新');
+    _templateEditState.editing = false;
+    _templateEditState.originalJson = null;
+    await loadTemplates();
+  } catch (e) {
+    statusEl.textContent = '❌ ' + e.message;
+    toast('上传失败: ' + e.message, 3500);
+  }
+}
+
+// ==================== F1: 教案全屏预览 + in-place 编辑 ====================
+const _fullscreenLessonState = {
+  plan: null,           // 当前全屏渲染的 plan_json
+  editMode: false,      // 是否处于编辑模式
+  dirty: false,         // 是否有未保存的修改
+};
+
+function _setFullscreenDirty(v) {
+  _fullscreenLessonState.dirty = !!v;
+  const bar = document.getElementById('fullscreenDirtyBar');
+  if (bar) bar.classList.toggle('hidden', !_fullscreenLessonState.dirty);
+}
+
+// 渲染预览模式（独立渲染，避免污染右栏 previewContent）
+function _renderFullscreenPreview() {
+  const body = document.getElementById('fullscreenLessonBody');
+  const plan = _fullscreenLessonState.plan;
+  if (!plan) {
+    body.innerHTML = '<div class="text-center text-muted py-10">教案为空</div>';
+    return;
+  }
+  _renderLessonPlanInto(body, plan);
+  // 若处于编辑模式，重新开启 contenteditable
+  if (_fullscreenLessonState.editMode) _enableContenteditable();
+}
+
+// 将 plan_json 渲染为目标容器 innerHTML（独立实现，避免污染右栏）
+function _renderLessonPlanInto(target, plan) {
+  if (!plan) { target.innerHTML = '<div class="text-center text-muted py-10">教案为空</div>'; return; }
+  const titleTable = `
+    <table class="title-table">
+      <tr><td colspan="2"><h1 data-field="title" data-path="course_name" class="editable-field">${escapeHtml(plan.course_name || '')} · ${escapeHtml(plan.chapter || '')} 教案</h1></td></tr>
+      <tr><td colspan="2" style="font-size:0.75rem;color:#8a7968;font-style:italic" data-field="meta" data-path="total_minutes">总课时：${escapeHtml(String(plan.total_minutes ?? ''))} 分钟</td></tr>
+    </table>
+  `;
+  const infoRows = [];
+  infoRows.push(`<tr><td>课程名称</td><td data-field="info" data-path="course_name" class="editable-field">${escapeHtml(plan.course_name || '')}</td></tr>`);
+  infoRows.push(`<tr><td>授课章节</td><td data-field="info" data-path="chapter" class="editable-field">${escapeHtml(plan.chapter || '')}</td></tr>`);
+  if (plan.teaching_object) infoRows.push(`<tr><td>授课对象</td><td>${escapeHtml(plan.teaching_object)}</td></tr>`);
+  if (plan.teacher_name) infoRows.push(`<tr><td>授课教师</td><td>${escapeHtml(plan.teacher_name)}</td></tr>`);
+  infoRows.push(`<tr><td>课时安排</td><td data-field="info" data-path="total_minutes" class="editable-field">${escapeHtml(String(plan.total_minutes ?? ''))} 分钟</td></tr>`);
+  const infoTable = `<table class="info-table"><tbody>${infoRows.join('')}</tbody></table>`;
+
+  const goalRows = [];
+  if (plan.knowledge_goal !== undefined) goalRows.push(`<tr><td class="goal-knowledge">知识目标</td><td data-field="goal" data-path="knowledge_goal" class="editable-field">${escapeHtml(plan.knowledge_goal || '')}</td></tr>`);
+  if (plan.ability_goal !== undefined) goalRows.push(`<tr><td class="goal-ability">能力目标</td><td data-field="goal" data-path="ability_goal" class="editable-field">${escapeHtml(plan.ability_goal || '')}</td></tr>`);
+  if (plan.value_goal !== undefined) goalRows.push(`<tr><td class="goal-value">素质/思政目标</td><td data-field="goal" data-path="value_goal" class="editable-field">${escapeHtml(plan.value_goal || '')}</td></tr>`);
+  // teaching_objectives 整体（若存在）
+  if (plan.teaching_objectives !== undefined && !goalRows.length) {
+    goalRows.push(`<tr><td class="goal-knowledge">教学目标</td><td data-field="goal" data-path="teaching_objectives" class="editable-field">${escapeHtml(plan.teaching_objectives || '')}</td></tr>`);
+  }
+  const goalTable = `<table class="goal-table"><tbody>${goalRows.join('')}</tbody></table>`;
+
+  const keyDiffRows = [];
+  if ((plan.key_points || []).length > 0) {
+    keyDiffRows.push(`<tr><td class="td-key">教学重点</td><td><ul>${(plan.key_points || []).map((k, i) => `<li data-field="key_points" data-path="key_points.${i}" class="editable-field">${escapeHtml(k)}</li>`).join('')}</ul></td></tr>`);
+  }
+  if ((plan.difficult_points || []).length > 0) {
+    keyDiffRows.push(`<tr><td class="td-diff">教学难点</td><td><ul>${(plan.difficult_points || []).map((d, i) => `<li data-field="difficult_points" data-path="difficult_points.${i}" class="editable-field">${escapeHtml(d)}</li>`).join('')}</ul></td></tr>`);
+  }
+  if (plan.difficult_strategy) {
+    keyDiffRows.push(`<tr><td style="background:rgba(46,125,110,0.08);color:#2e7d6e">突破策略</td><td data-field="difficult_strategy" data-path="difficult_strategy" class="editable-field">${escapeHtml(plan.difficult_strategy)}</td></tr>`);
+  }
+  const keyDiffTable = keyDiffRows.length ? `<table class="key-diff-table"><tbody>${keyDiffRows.join('')}</tbody></table>` : '';
+
+  const stagesTable = (() => {
+    if (!plan.stages || plan.stages.length === 0) {
+      return '<table class="stages-table"><tr><td colspan="5" style="text-align:center;color:#8a7968">暂无教学过程</td></tr></table>';
+    }
+    const rows = plan.stages.map((s, i) => `
+      <tr>
+        <td class="stage-name">
+          <div data-field="stages" data-path="stages.${i}.name" class="editable-field">${escapeHtml(s.name || '')}</div>
+          <span class="text-muted text-[10px]"><span data-field="stages" data-path="stages.${i}.duration_min" class="editable-field">${escapeHtml(String(s.duration_min ?? ''))}</span>分钟</span>
+        </td>
+        <td data-field="stages" data-path="stages.${i}.teacher_activity" class="editable-field">${escapeHtml(s.teacher_activity || '')}</td>
+        <td data-field="stages" data-path="stages.${i}.student_activity" class="editable-field">${escapeHtml(s.student_activity || '')}</td>
+        <td data-field="stages" data-path="stages.${i}.design_intent" class="editable-field">${escapeHtml(s.design_intent || '')}</td>
+        <td data-field="stages" data-path="stages.${i}.content" class="editable-field">${s.content ? escapeHtml(s.content) : '<span class="text-muted">-</span>'}</td>
+      </tr>
+    `).join('');
+    return `
+      <table class="stages-table">
+        <thead>
+          <tr>
+            <th>阶段/时长</th><th>教师行为</th><th>学生行为</th><th>设计意图</th><th>教学内容</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  })();
+
+  const boardTable = plan.board_design !== undefined && plan.board_design !== null && plan.board_design !== '' ? `
+    <table class="board-table">
+      <tr><td>板书设计</td><td data-field="board_design" data-path="board_design" class="editable-field" style="font-family:monospace;font-size:0.8rem;white-space:pre-wrap">${escapeHtml(plan.board_design)}</td></tr>
+    </table>
+  ` : '';
+
+  const hwRows = (plan.homework || []).map((h, i) => `<tr><td>${i+1}</td><td data-field="homework" data-path="homework.${i}" class="editable-field">${escapeHtml(h)}</td></tr>`).join('');
+  const homeworkTable = hwRows ? `<table class="homework-table"><tbody>${hwRows}</tbody></table>` : '';
+
+  const reflectionTable = `
+    <table class="reflection-table">
+      <tr><td style="width:80px;background:rgba(46,125,110,0.06);font-weight:500">教学反思</td><td data-field="reflection" data-path="reflection" class="editable-field">${escapeHtml(plan.reflection || '（课后填写）')}</td></tr>
+    </table>
+  `;
+
+  const nums = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  let n = 4;
+  target.innerHTML = `
+    ${titleTable}
+    <h2>一、教学基本信息</h2>${infoTable}
+    <h2>二、教学目标</h2>${goalTable}
+    <h2>三、教学重难点</h2>${keyDiffTable || '<table><tr><td colspan="2" style="text-align:center;color:#8a7968">暂无</td></tr></table>'}
+    <h2>${nums[n++]}、教学过程设计</h2>${stagesTable}
+    ${boardTable ? `<h2>${nums[n++]}、板书设计</h2>${boardTable}` : ''}
+    ${homeworkTable ? `<h2>${nums[n++]}、课后作业</h2>${homeworkTable}` : ''}
+    <h2>${nums[n]}、教学反思</h2>${reflectionTable}
+  `;
+  target.scrollTop = 0;
+}
+
+// 打开全屏教案 modal
+async function openFullscreenLesson() {
+  if (!state.currentLessonId) {
+    toast('请先生成或选择教案');
+    return;
+  }
+  try {
+    const data = await api(`/api/lessons/${state.currentLessonId}`);
+    const plan = data.data?.plan_json || data.data?.plan || data.data || null;
+    if (!plan) { toast('未获取到教案数据'); return; }
+    _fullscreenLessonState.plan = plan;
+    _fullscreenLessonState.editMode = false;
+    _setFullscreenDirty(false);
+    _updateToggleEditBtn();
+    _renderFullscreenPreview();
+    const subtitle = document.getElementById('fullscreenLessonSubtitle');
+    if (subtitle) subtitle.textContent = `· ${plan.course_name || ''} / ${plan.chapter || ''}`;
+    const modal = document.getElementById('fullscreenLessonModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  } catch (e) {
+    toast('打开全屏教案失败: ' + e.message);
+  }
+}
+
+function closeFullscreenLesson() {
+  const modal = document.getElementById('fullscreenLessonModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+  _fullscreenLessonState.plan = null;
+  _fullscreenLessonState.editMode = false;
+  _setFullscreenDirty(false);
+}
+
+// 更新编辑/预览切换按钮显示
+function _updateToggleEditBtn() {
+  const btn = document.getElementById('toggleEditBtn');
+  if (!btn) return;
+  const icon = btn.querySelector('.edit-icon');
+  const label = btn.querySelector('.edit-label');
+  if (_fullscreenLessonState.editMode) {
+    if (icon) icon.textContent = '👁';
+    if (label) label.textContent = '预览';
+    btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary');
+  } else {
+    if (icon) icon.textContent = '✏️';
+    if (label) label.textContent = '编辑';
+    btn.classList.add('btn-ghost'); btn.classList.remove('btn-primary');
+  }
+}
+
+// 切换编辑/预览模式（保留未保存的修改：每次切换都同步到 _fullscreenLessonState.plan）
+function toggleLessonEditMode() {
+  if (_fullscreenLessonState.editMode) {
+    // 编辑 -> 预览：先收集当前编辑结果到 plan，再重新渲染（保留修改）
+    const collected = collectEditedPlan();
+    if (collected) _fullscreenLessonState.plan = collected;
+    _fullscreenLessonState.editMode = false;
+    _updateToggleEditBtn();
+    _renderFullscreenPreview();
+  } else {
+    // 预览 -> 编辑：渲染后开启 contenteditable
+    _fullscreenLessonState.editMode = true;
+    _updateToggleEditBtn();
+    _renderFullscreenPreview();
+    _enableContenteditable();
+  }
+}
+
+// 给所有 .editable-field 元素加 contenteditable 与 hover 提示
+function _enableContenteditable() {
+  const body = document.getElementById('fullscreenLessonBody');
+  body.querySelectorAll('.editable-field').forEach(el => {
+    el.setAttribute('contenteditable', 'true');
+    el.classList.add('editable-active');
+    el.addEventListener('input', () => _setFullscreenDirty(true));
+  });
+}
+
+// 收集所有 [data-field][data-path] 的 contenteditable 文本，按 path 组装回 plan_json
+function collectEditedPlan() {
+  const body = document.getElementById('fullscreenLessonBody');
+  if (!body) return null;
+  const plan = JSON.parse(JSON.stringify(_fullscreenLessonState.plan || {}));
+  body.querySelectorAll('[data-path]').forEach(el => {
+    const path = el.dataset.path;
+    if (!path) return;
+    const text = el.textContent;
+    setByPath(plan, path, text);
+  });
+  return plan;
+}
+
+// 按 "stages.0.name" 形式的 path 写值（自动类型推断：数字字符串转 number）
+function setByPath(obj, path, value) {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    const nextK = parts[i+1];
+    const idx = Number(k);
+    if (!isNaN(idx) && Array.isArray(cur)) {
+      if (!cur[idx]) cur[idx] = isNaN(Number(nextK)) ? {} : [];
+      cur = cur[idx];
+    } else if (!isNaN(idx)) {
+      if (!cur[k]) cur[k] = [];
+      cur = cur[k];
+    } else {
+      if (!cur[k]) cur[k] = isNaN(Number(nextK)) ? {} : [];
+      cur = cur[k];
+    }
+  }
+  const last = parts[parts.length - 1];
+  const lastIdx = Number(last);
+  let v = value;
+  // 数值字段转 number
+  if (last === 'duration_min' || last === 'total_minutes') {
+    const n = Number(value);
+    v = isNaN(n) ? value : n;
+  }
+  if (!isNaN(lastIdx) && Array.isArray(cur)) {
+    cur[lastIdx] = v;
+  } else {
+    cur[last] = v;
+  }
+}
+
+// 保存编辑后的教案
+async function saveEditedLesson() {
+  if (!state.currentLessonId) { toast('未选择教案'); return; }
+  const saveBtn = document.getElementById('saveLessonBtn');
+  const oldText = saveBtn ? saveBtn.textContent : '';
+  try {
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+    // 收集编辑结果（即使在预览模式，也用上次同步过的 plan）
+    const newPlan = _fullscreenLessonState.editMode ? collectEditedPlan() : _fullscreenLessonState.plan;
+    if (!newPlan) { toast('没有可保存的数据'); return; }
+    await api(`/api/lessons/${state.currentLessonId}`, {
+      method: 'PUT',
+      body: JSON.stringify(newPlan),
+    });
+    _fullscreenLessonState.plan = newPlan;
+    _setFullscreenDirty(false);
+    toast('教案已保存');
+    // 同步刷新右栏预览
+    try { renderLessonPreview(newPlan); } catch(_) {}
+    // 切回预览模式（若在编辑模式）
+    if (_fullscreenLessonState.editMode) {
+      _fullscreenLessonState.editMode = false;
+      _updateToggleEditBtn();
+      _renderFullscreenPreview();
+    }
+  } catch (e) {
+    toast('保存失败: ' + e.message);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = oldText; }
+  }
+}
+
+// ==================== F3: 聊天记录持久化 ====================
+async function loadChatHistory(courseId) {
+  const stream = document.getElementById('chatStream');
+  if (!stream || !courseId) return;
+  stream.querySelectorAll('.fade-in').forEach(el => el.remove());
+  const emptyState = document.getElementById('chatEmptyState');
+
+  const localMsgs = loadChatFromLocalStorage(courseId);
+  if (localMsgs.length > 0) {
+    if (emptyState) emptyState.classList.add('hidden');
+    localMsgs.forEach(m => {
+      const role = m.role === 'user' ? 'user' : 'assistant';
+      const content = m.content || '';
+      if (role === 'user') appendUserMessage(content);
+      else appendAiMessage(content);
+    });
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  try {
+    const data = await api(`/api/courses/${courseId}/chat-messages`);
+    const remoteMsgs = Array.isArray(data.data) ? data.data : [];
+    if (remoteMsgs.length === 0 && localMsgs.length === 0) {
+      if (emptyState) emptyState.classList.remove('hidden');
+      toast('暂无历史对话', 1500);
+      return;
+    }
+    if (emptyState) emptyState.classList.add('hidden');
+
+    const merged = mergeChatMessages(localMsgs, remoteMsgs);
+    saveChatToLocalStorage(courseId, remoteMsgs);
+
+    if (remoteMsgs.length > 0 && localMsgs.length !== remoteMsgs.length) {
+      stream.querySelectorAll('.fade-in').forEach(el => el.remove());
+      merged.forEach(m => {
+        const role = m.role === 'user' ? 'user' : 'assistant';
+        const content = m.content || '';
+        if (role === 'user') appendUserMessage(content);
+        else appendAiMessage(content);
+      });
+      stream.scrollTop = stream.scrollHeight;
+    }
+  } catch (e) {
+    if (localMsgs.length === 0 && emptyState) emptyState.classList.remove('hidden');
+    console.warn('loadChatHistory failed:', e.message);
+  }
+}
+
+// ==================== F1/F3: 按钮事件绑定 ====================
+document.getElementById('fullscreenPreviewBtn')?.addEventListener('click', openFullscreenLesson);
+document.getElementById('openTemplateLibraryBtn')?.addEventListener('click', () => {
+  if (typeof openTemplateLibrary === 'function') openTemplateLibrary();
+});
+document.getElementById('closeFullscreenBtn')?.addEventListener('click', () => {
+  if (_fullscreenLessonState.dirty) {
+    showConfirm('有未保存的修改', '关闭将丢失未保存的修改，确认关闭？').then(ok => { if (ok) closeFullscreenLesson(); });
+  } else {
+    closeFullscreenLesson();
+  }
+});
+document.getElementById('toggleEditBtn')?.addEventListener('click', toggleLessonEditMode);
+document.getElementById('saveLessonBtn')?.addEventListener('click', saveEditedLesson);
+// ESC 关闭
+document.getElementById('fullscreenLessonModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'fullscreenLessonModal') {
+    if (_fullscreenLessonState.dirty) {
+      showConfirm('有未保存的修改', '关闭将丢失未保存的修改，确认关闭？').then(ok => { if (ok) closeFullscreenLesson(); });
+    } else {
+      closeFullscreenLesson();
+    }
+  }
+});
+
+// contenteditable 元素的 hover 提示样式（淡黄色边框）
+(function() {
+  const style = document.createElement('style');
+  style.textContent = `
+    #fullscreenLessonBody .editable-active {
+      outline: 1px dashed rgba(245, 158, 11, 0.55);
+      outline-offset: 2px;
+      border-radius: 2px;
+      transition: background 0.15s, box-shadow 0.15s;
+      cursor: text;
+    }
+    #fullscreenLessonBody .editable-active:hover {
+      background: rgba(254, 240, 138, 0.45);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+    }
+    #fullscreenLessonBody .editable-active:focus {
+      background: rgba(254, 240, 138, 0.6);
+      outline: 2px solid rgba(46, 125, 110, 0.65);
+    }
+  `;
+  document.head.appendChild(style);
+})();
 </script>
 </body>
 </html>

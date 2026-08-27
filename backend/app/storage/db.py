@@ -6,12 +6,14 @@ from typing import AsyncIterator
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
     Integer,
     String,
     Text,
+    event,
     func,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -30,6 +32,11 @@ class CourseORM(Base):
     name = Column(String(100), nullable=False)
     major = Column(String(100))
     description = Column(Text)
+    # 学科标识(用于注入学科领域规则): math/chinese/english/physics/chemistry/biology/history/geography/politics/it/other
+    subject = Column(String(50), default="")
+    # 内容缓存：教材内容哈希值，用于增量提取判断
+    content_hash = Column(String(64), default="", comment="教材内容 SHA256 哈希，用于增量提取缓存")
+    last_extracted_at = Column(DateTime, nullable=True, comment="上次知识点提取时间")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     materials = relationship("MaterialORM", back_populates="course", cascade="all,delete-orphan")
@@ -37,6 +44,8 @@ class CourseORM(Base):
     messages = relationship("ChatMessageORM", back_populates="course", cascade="all,delete-orphan")
     chapters = relationship("ChapterORM", back_populates="course", cascade="all,delete-orphan", order_by="ChapterORM.sort_order")
     knowledge_points = relationship("KnowledgePointORM", back_populates="course", cascade="all,delete-orphan", order_by="KnowledgePointORM.sort_order")
+    ppt_records = relationship("PptRecordORM", back_populates="course", cascade="all,delete-orphan")
+    lesson_templates = relationship("LessonTemplateORM", back_populates="course", cascade="all,delete-orphan")
 
 
 class MaterialORM(Base):
@@ -46,6 +55,9 @@ class MaterialORM(Base):
     filename = Column(String(255), nullable=False)
     stored_path = Column(String(500), nullable=False)
     material_type = Column(String(50), default="other")
+    # 教材版本标签（如：人教版/高教版/清华版/通用），便于多教材版本管理
+    version_label = Column(String(100), default="")
+    is_primary = Column(Boolean, default=False, comment="是否主教材(同课程下多本教材时，主教材用于AI生成优先检索)")
     file_size = Column(Integer, default=0)
     content_text = Column(Text, default="")
     content_preview = Column(Text, default="")
@@ -121,7 +133,7 @@ class PptRecordORM(Base):
     stored_path = Column(String(500), default="")  # 上传文件路径
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    course = relationship("CourseORM", backref="ppt_records")
+    course = relationship("CourseORM", back_populates="ppt_records")
 
 
 class KnowledgePointORM(Base):
@@ -140,14 +152,34 @@ class KnowledgePointORM(Base):
     definition = Column(Text, default="")
     source_pages = Column(String(100), default="")  # 教材页码，如 "P23-P25"
     layer = Column(String(20), default="basic")  # basic / core / extension
+    importance = Column(Integer, default=3)       # 1-5 重要度
+    difficulty = Column(Integer, default=3)       # 1-5 难度
     is_key_point = Column(Integer, default=0)      # 0/1
     is_difficult = Column(Integer, default=0)       # 0/1
     is_exam_point = Column(Integer, default=0)      # 0/1
+    prerequisites_json = Column(JSON, default=list)  # 前置知识点名称列表
+    relationships_json = Column(JSON, default=list)  # 关联关系: [{target, rel_type}]
+    accuracy_json = Column(JSON, default=dict)       # 联网校验结果: {score, reason, flag}
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     course = relationship("CourseORM", back_populates="knowledge_points")
+
+
+class LessonTemplateORM(Base):
+    """教案模板库（全局模板 course_id=null，课程私有模板 course_id=课程ID）"""
+    __tablename__ = "lesson_templates"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, default="")
+    structure_json = Column(JSON, default=dict)  # 模板结构定义（表格类型+字段列表+默认值）
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = relationship("CourseORM", back_populates="lesson_templates")
 
 
 class TextbookChunkORM(Base):
@@ -174,6 +206,14 @@ engine = create_async_engine(
     future=True,
 )
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+# 启用 SQLite 外键约束（SQLite 默认关闭）
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 async def init_db() -> None:
@@ -206,6 +246,52 @@ async def init_db() -> None:
                         "ALTER TABLE ppt_records ADD COLUMN stored_path VARCHAR(500) DEFAULT ''"
                     )
                 )
+            # 为 knowledge_points 新增 importance/difficulty/prerequisites_json/accuracy_json
+            kp_cols = [c["name"] for c in inspector.get_columns("knowledge_points")]
+            if "importance" not in kp_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE knowledge_points ADD COLUMN importance INTEGER DEFAULT 3"
+                ))
+            if "difficulty" not in kp_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE knowledge_points ADD COLUMN difficulty INTEGER DEFAULT 3"
+                ))
+            if "prerequisites_json" not in kp_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE knowledge_points ADD COLUMN prerequisites_json TEXT DEFAULT '[]'"
+                ))
+            if "accuracy_json" not in kp_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE knowledge_points ADD COLUMN accuracy_json TEXT DEFAULT '{}'"
+                ))
+            if "relationships_json" not in kp_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE knowledge_points ADD COLUMN relationships_json TEXT DEFAULT '[]'"
+                ))
+            # 为 courses 新增 subject 列(学科标识, 用于注入学科领域规则)
+            course_cols = [c["name"] for c in inspector.get_columns("courses")]
+            if "subject" not in course_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE courses ADD COLUMN subject VARCHAR(50) DEFAULT ''"
+                ))
+            if "content_hash" not in course_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE courses ADD COLUMN content_hash VARCHAR(64) DEFAULT ''"
+                ))
+            if "last_extracted_at" not in course_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE courses ADD COLUMN last_extracted_at DATETIME"
+                ))
+            # 为 materials 新增 version_label 和 is_primary 列(多教材版本管理)
+            mat_cols = [c["name"] for c in inspector.get_columns("materials")]
+            if "version_label" not in mat_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE materials ADD COLUMN version_label VARCHAR(100) DEFAULT ''"
+                ))
+            if "is_primary" not in mat_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE materials ADD COLUMN is_primary BOOLEAN DEFAULT 0"
+                ))
         await conn.run_sync(_migrate)
 
 

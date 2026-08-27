@@ -1,7 +1,6 @@
 """文件存储（本地文件系统）"""
 from __future__ import annotations
 
-import shutil
 import uuid
 from pathlib import Path
 

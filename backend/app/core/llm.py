@@ -4,14 +4,18 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from pathlib import Path
-from typing import Any, AsyncIterator, Optional
+from typing import Any, Optional
 
 from openai import AsyncOpenAI
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
@@ -186,9 +190,17 @@ def mask_api_key(key: str) -> str:
 # LLM 客户端
 # ============================================================
 class LLMClient:
-    """通用LLM异步客户端（兼容OpenAI协议）"""
+    """通用LLM异步客户端（兼容OpenAI协议）
 
-    def __init__(self, cfg: dict[str, Any]) -> None:
+    支持自动重试与指数退避（max_retries=3，退避间隔 1s, 2s, 4s）
+    """
+
+    def __init__(
+        self,
+        cfg: dict[str, Any],
+        max_retries: int = 3,
+        retry_base_delay: float = 1.0,
+    ) -> None:
         api_key = cfg.get("api_key", "")
         base_url = cfg.get("base_url", "")
         model = cfg.get("model", "")
@@ -205,6 +217,8 @@ class LLMClient:
         self.temperature = float(cfg.get("temperature", 0.7))
         self.max_tokens = int(cfg.get("max_tokens", 4096))
         self.provider = cfg.get("provider", "custom")
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
 
     async def chat(
         self,
@@ -213,20 +227,38 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> str:
-        """同步对话调用，返回完整文本"""
-        try:
-            resp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
-            )
-            return resp.choices[0].message.content or ""
-        except Exception as e:
-            raise LLMError(f"LLM调用失败: {e}") from e
+        """同步对话调用，返回完整文本
+
+        自动重试：遇到网络/限流/超时等可恢复错误时，以指数退避重试
+        认证错误（401）和模型不存在（404）不重试
+        """
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = await self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=temperature if temperature is not None else self.temperature,
+                    max_tokens=max_tokens or self.max_tokens,
+                )
+                return resp.choices[0].message.content or ""
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                is_retryable = _is_retryable_error(err_str)
+                if is_retryable and attempt < self.max_retries:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning(
+                        "LLM 调用失败（第%d次），%.1fs 后重试: %s",
+                        attempt + 1, delay, err_str[:120],
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    break
+        raise LLMError(f"LLM调用失败（已重试{self.max_retries}次）: {last_error}") from last_error
 
     async def chat_json(
         self,
@@ -238,29 +270,34 @@ class LLMClient:
         text = await self.chat(system_prompt, user_prompt, temperature=temperature)
         return parse_json_loose(text)
 
-    async def stream_chat(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        temperature: Optional[float] = None,
-    ) -> AsyncIterator[str]:
-        """流式对话，逐块返回文本增量"""
-        try:
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature if temperature is not None else self.temperature,
-                max_tokens=self.max_tokens,
-                stream=True,
-            )
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        except Exception as e:
-            raise LLMError(f"LLM流式调用失败: {e}") from e
+
+def _is_retryable_error(err_str: str) -> bool:
+    """判断是否为可重试的临时错误"""
+    non_retryable = [
+        "401", "unauthorized", "auth",
+        "403", "forbidden",
+        "404", "not found",
+        "invalid_api_key", "invalid api key",
+        "insufficient_quota", "exceeded",
+    ]
+    err_lower = err_str.lower()
+    for keyword in non_retryable:
+        if keyword in err_lower:
+            return False
+    retryable = [
+        "timeout", "timed out",
+        "rate limit", "rate_limit",
+        "429", "too many requests",
+        "502", "503", "504",
+        "bad gateway", "service unavailable", "gateway timeout",
+        "connection", "reset", "refused",
+        "server error", "internal server",
+        "temporary", "try again",
+    ]
+    for keyword in retryable:
+        if keyword in err_lower:
+            return True
+    return True
 
 
 def parse_json_loose(text: str) -> dict | list:

@@ -298,11 +298,6 @@ def _detect_page_number_from_blocks(page) -> int | None:
     return None
 
 
-def _detect_page_number(first_line: str) -> int | None:
-    """从页面首行文本中检测实际印刷页码（兼容旧版，推荐使用 _detect_page_number_from_blocks）"""
-    return _detect_page_number_from_text(first_line)
-
-
 def _infer_page_numbers(pages: list[dict]) -> list[dict]:
     """推断缺失的页码，基于已知页码进行线性插值"""
     import re
@@ -430,16 +425,35 @@ def make_preview(text: str, preview_chars: int = 500) -> str:
 
 
 def detect_material_type(filename: str, content: str) -> str:
-    """简单启发式判断材料类型"""
+    """启发式判断材料类型（六类枚举）
+    syllabus:课程标准/大纲、textbook:教科书、reference:教参教辅、
+    exercise_book:练习题册、paper:学术论文、other:其他
+    """
     name = filename.lower()
-    if "大纲" in filename or "syllabus" in name:
+    text_head = (content or "")[:500]
+    # 课程标准/大纲
+    if any(k in filename for k in ["大纲", "课程标准", "课标"]) or "syllabus" in name:
         return "syllabus"
-    if "人才培养" in filename or "培养方案" in filename:
-        return "training_plan"
-    if "讲义" in filename or "课件" in filename or "handout" in name:
-        return "handout"
-    if "教材" in filename or "textbook" in name:
-        return "textbook"
-    if "论文" in filename or "paper" in name:
+    if any(k in filename for k in ["人才培养", "培养方案", "教学计划"]):
+        return "syllabus"
+    # 练习题册
+    if any(k in filename for k in ["练习", "习题", "试题", "试卷", "题库"]):
+        return "exercise_book"
+    if any(k in text_head for k in ["一、选择题", "二、填空题", "单选题", "多选题", "简答题"]):
+        return "exercise_book"
+    # 学术论文
+    if any(k in filename for k in ["论文", "期刊", "研究"]):
         return "paper"
+    if "摘要" in text_head and "关键词" in text_head:
+        return "paper"
+    # 教参教辅（讲义/课件/教参/教案集）
+    if any(k in filename for k in ["讲义", "课件", "教参", "教辅", "参考", "handout"]):
+        return "reference"
+    # 教科书
+    if any(k in filename for k in ["教材", "教科书", "课本", "textbook"]):
+        return "textbook"
+    # 内容启发：有"第X章"+"节"结构偏向教材
+    import re
+    if re.search(r"第[一二三四五六七八九十百零0-9]+[章节]", content or "") and len(content or "") > 5000:
+        return "textbook"
     return "other"

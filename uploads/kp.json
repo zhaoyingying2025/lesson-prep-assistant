@@ -1,0 +1,7 @@
+[
+  {"name":"集合的基本概念","definition":"集合是指具有某种特定性质的对象的全体","source_pages":"P1-P2","importance":"high","difficulty":"medium"},
+  {"name":"集合的运算","definition":"并集、交集、差集、补集及其运算律","source_pages":"P2-P3","importance":"high","difficulty":"medium"},
+  {"name":"二元关系","definition":"A×B的子集R称为从A到B的二元关系","source_pages":"P3-P4","importance":"high","difficulty":"hard"},
+  {"name":"等价关系与划分","definition":"满足自反性、对称性和传递性的关系","source_pages":"P4-P5","importance":"high","difficulty":"hard"},
+  {"name":"偏序关系","definition":"满足自反性、反对称性和传递性的关系","source_pages":"P5-P6","importance":"medium","difficulty":"hard"}
+]
