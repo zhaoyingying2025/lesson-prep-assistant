@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from ..core.llm import get_llm
 from ..core.prompts import PPT_SYSTEM, PPT_USER_TEMPLATE
+from ..core.prompt_loader import inject_domain_context
 from ..models.schemas import LessonPlan
 
 
@@ -54,6 +55,7 @@ async def generate_ppt_content(
     image_style: str = "icons",
     style_custom: str = "",
     textbook_context: str = "",
+    subject: Optional[str] = None,
 ) -> dict[str, Any]:
     """调用LLM生成教学PPT的幻灯片结构
 
@@ -65,6 +67,7 @@ async def generate_ppt_content(
         image_style: 视觉元素风格
         style_custom: 用户自定义风格描述
         textbook_context: 教材原文参考，用于知识点解释时引用教材原文
+        subject: 学科标识(如 math/chinese/english/physics 等), 用于注入学科领域规则
 
     Returns:
         {"style_used": str, "total_slides": int, "slides": [...]}
@@ -98,7 +101,10 @@ async def generate_ppt_content(
         image_style_desc=params["image_style_desc"],
     )
 
-    data = await llm.chat_json(PPT_SYSTEM, user_prompt, temperature=0.8)
+    # 注入学科领域规则 (借鉴 ai-teaching-ppt 的多槽位注入)
+    system_prompt = inject_domain_context(PPT_SYSTEM, subject)
+
+    data = await llm.chat_json(system_prompt, user_prompt, temperature=0.8)
 
     # 验证结构
     if "slides" not in data or not isinstance(data["slides"], list):

@@ -136,6 +136,20 @@ def _add_rounded_rect(slide, left, top, width, height, color: RGBColor, line_col
     return shape
 
 
+def _add_oval(slide, left, top, width, height, color: RGBColor, line_color=None):
+    """添加椭圆装饰"""
+    shape = slide.shapes.add_shape(MSO_SHAPE.OVAL, left, top, width, height)
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = color
+    if line_color is None:
+        shape.line.fill.background()
+    else:
+        shape.line.color.rgb = line_color
+        shape.line.width = Pt(0.5)
+    shape.shadow.inherit = False
+    return shape
+
+
 def _add_textbox(slide, left, top, width, height, text: str,
                  font_size=18, bold=False, color: RGBColor = None,
                  align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.TOP,
@@ -179,12 +193,13 @@ def _add_bullet_text(slide, left, top, width, height, items: list[str],
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.alignment = PP_ALIGN.LEFT
         p.line_spacing = line_spacing
-        # 圆点
+        # 圆点 - 使用更优雅的 ▸ 符号
         run_dot = p.add_run()
-        run_dot.text = "● "
-        run_dot.font.size = Pt(font_size - 2)
+        run_dot.text = "▸  "
+        run_dot.font.size = Pt(font_size)
         run_dot.font.color.rgb = bullet_color
         run_dot.font.name = font_name
+        run_dot.font.bold = True
         # 正文
         run = p.add_run()
         run.text = str(item)
@@ -195,84 +210,106 @@ def _add_bullet_text(slide, left, top, width, height, items: list[str],
 
 
 def _add_page_number(slide, page_num: int, total: int, colors: dict):
-    """添加页码（右下角）"""
-    _add_textbox(slide, SLIDE_W - Inches(1.5), SLIDE_H - Inches(0.45),
-                 Inches(1.3), Inches(0.35),
-                 f"{page_num} / {total}", font_size=9, color=colors["text_light"],
+    """添加页码页脚条（右下角页码 + 左下角装饰线）"""
+    # 底部细线
+    _add_rect(slide, MARGIN_L, SLIDE_H - Inches(0.38), CONTENT_W, Inches(0.02), colors["rule"])
+    # 左下角小标识
+    _add_textbox(slide, MARGIN_L, SLIDE_H - Inches(0.35),
+                 Inches(3), Inches(0.3),
+                 "教学课件", font_size=8, color=colors["text_light"],
+                 anchor=MSO_ANCHOR.MIDDLE)
+    # 右下角页码
+    _add_textbox(slide, SLIDE_W - Inches(1.5), SLIDE_H - Inches(0.35),
+                 Inches(1.3), Inches(0.3),
+                 f"{page_num:02d} / {total:02d}", font_size=9, color=colors["text_light"],
                  align=PP_ALIGN.RIGHT, anchor=MSO_ANCHOR.MIDDLE)
 
 
 # ============ 幻灯片渲染器 ============
 
 def _render_cover(slide, data: dict, colors: dict, style: str):
-    """封面页"""
+    """封面页 - 带装饰圆形和层次感"""
     _set_bg(slide, colors["bg"])
     title = data.get("title", "教学课件")
     subtitle = data.get("subtitle", "")
     metadata = data.get("content", "")
 
+    # 右上角装饰大圆（半透明效果用浅色模拟）
+    _add_oval(slide, SLIDE_W - Inches(2.5), Inches(-0.8), Inches(3.5), Inches(3.5), colors["primary_light"])
+    # 左下角装饰小圆
+    _add_oval(slide, Inches(-0.5), SLIDE_H - Inches(2.0), Inches(2.5), Inches(2.5), colors["bg_alt"])
+
     # 顶部装饰条
-    _add_rect(slide, 0, 0, SLIDE_W, Inches(0.08), colors["primary"])
+    _add_rect(slide, 0, 0, SLIDE_W, Inches(0.12), colors["primary"])
     # 底部装饰条
-    _add_rect(slide, 0, SLIDE_H - Inches(0.08), SLIDE_W, Inches(0.08), colors["primary"])
+    _add_rect(slide, 0, SLIDE_H - Inches(0.12), SLIDE_W, Inches(0.12), colors["primary"])
 
-    # 中间装饰框
-    box_top = Inches(2.0)
-    box_h = Inches(3.5)
-    _add_rect(slide, MARGIN_L, box_top, CONTENT_W, box_h, colors["bg_alt"],
-              line_color=colors["primary_light"])
+    # 中间内容卡片
+    box_top = Inches(1.8)
+    box_h = Inches(3.8)
+    _add_rounded_rect(slide, MARGIN_L + Inches(0.3), box_top, CONTENT_W - Inches(0.6), box_h,
+                      colors["bg_alt"], line_color=colors["primary_light"])
 
-    # 顶部色条
-    _add_rect(slide, MARGIN_L, box_top, CONTENT_W, Inches(0.06), colors["primary"])
+    # 卡片顶部色条
+    _add_rect(slide, MARGIN_L + Inches(0.3), box_top, CONTENT_W - Inches(0.6), Inches(0.08), colors["primary"])
+    # 左侧装饰竖条
+    _add_rect(slide, MARGIN_L + Inches(0.3), box_top + Inches(0.08), Inches(0.06), box_h - Inches(0.08), colors["primary"])
 
     # 主标题
-    _add_textbox(slide, MARGIN_L + Inches(0.5), box_top + Inches(0.5),
-                 CONTENT_W - Inches(1.0), Inches(1.2),
-                 title, font_size=36, bold=True, color=colors["primary_dark"],
+    _add_textbox(slide, MARGIN_L + Inches(1.0), box_top + Inches(0.5),
+                 CONTENT_W - Inches(1.6), Inches(1.3),
+                 title, font_size=38, bold=True, color=colors["primary_dark"],
                  align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
-    # 副标题（章节）
+    # 副标题（章节）- 带装饰点
     if subtitle:
-        _add_textbox(slide, MARGIN_L + Inches(0.5), box_top + Inches(1.8),
-                     CONTENT_W - Inches(1.0), Inches(0.7),
-                     f"· {subtitle} ·", font_size=22, color=colors["text_light"],
+        _add_textbox(slide, MARGIN_L + Inches(1.0), box_top + Inches(2.0),
+                     CONTENT_W - Inches(1.6), Inches(0.7),
+                     f"◆  {subtitle}  ◆", font_size=20, color=colors["text_light"],
                      align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
     # 元信息（课时/教师等）
     if metadata:
-        _add_textbox(slide, MARGIN_L + Inches(0.5), box_top + Inches(2.6),
-                     CONTENT_W - Inches(1.0), Inches(0.6),
+        _add_textbox(slide, MARGIN_L + Inches(1.0), box_top + Inches(2.8),
+                     CONTENT_W - Inches(1.6), Inches(0.6),
                      metadata, font_size=14, color=colors["text_light"],
                      align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
 
 def _render_section_header(slide, data: dict, colors: dict, style: str):
-    """章节标题页"""
+    """章节标题页 - 带装饰圆形和大色块"""
     _set_bg(slide, colors["bg"])
     title = data.get("title", "")
     subtitle = data.get("subtitle", "")
+
+    # 右侧装饰大圆
+    _add_oval(slide, SLIDE_W - Inches(3.0), Inches(0.5), Inches(4.0), Inches(4.0), colors["bg_alt"])
+    # 左侧装饰小圆
+    _add_oval(slide, Inches(-1.0), SLIDE_H - Inches(2.5), Inches(3.0), Inches(3.0), colors["primary_light"])
 
     # 全宽色块
     bar_top = Inches(2.8)
     bar_h = Inches(1.8)
     _add_rect(slide, 0, bar_top, SLIDE_W, bar_h, colors["primary"])
     # 左侧装饰条
-    _add_rect(slide, 0, bar_top, Inches(0.12), bar_h, colors["primary_dark"])
+    _add_rect(slide, 0, bar_top, Inches(0.15), bar_h, colors["primary_dark"])
+    # 右侧装饰条
+    _add_rect(slide, SLIDE_W - Inches(0.15), bar_top, Inches(0.15), bar_h, colors["primary_dark"])
 
-    _add_textbox(slide, MARGIN_L + Inches(0.5), bar_top + Inches(0.2),
-                 CONTENT_W - Inches(1.0), Inches(0.8),
-                 title, font_size=32, bold=True, color=colors["text_white"],
-                 align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.MIDDLE)
+    _add_textbox(slide, MARGIN_L + Inches(0.8), bar_top + Inches(0.15),
+                 CONTENT_W - Inches(1.6), Inches(0.8),
+                 title, font_size=34, bold=True, color=colors["text_white"],
+                 align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
     if subtitle:
-        _add_textbox(slide, MARGIN_L + Inches(0.5), bar_top + Inches(1.0),
-                     CONTENT_W - Inches(1.0), Inches(0.6),
-                     subtitle, font_size=16, color=colors["text_white"],
-                     align=PP_ALIGN.LEFT, anchor=MSO_ANCHOR.MIDDLE)
+        _add_textbox(slide, MARGIN_L + Inches(0.8), bar_top + Inches(1.0),
+                     CONTENT_W - Inches(1.6), Inches(0.6),
+                     f"▸  {subtitle}", font_size=18, color=colors["text_white"],
+                     align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.MIDDLE)
 
 
 def _render_content(slide, data: dict, colors: dict, style: str, page_num: int, total: int):
-    """普通内容页 - 带标题和正文"""
+    """普通内容页 - 带图标标题和正文"""
     _set_bg(slide, colors["bg"])
     title = data.get("title", "")
     bullet_points = data.get("bullet_points", [])
@@ -281,16 +318,20 @@ def _render_content(slide, data: dict, colors: dict, style: str, page_num: int, 
 
     # 顶部装饰条
     _add_rect(slide, 0, 0, SLIDE_W, Inches(0.06), colors["primary"])
+    # 右上角装饰圆
+    _add_oval(slide, SLIDE_W - Inches(1.8), Inches(-0.6), Inches(2.2), Inches(2.2), colors["bg_alt"])
 
-    # 标题区域
-    _add_rect(slide, MARGIN_L, Inches(0.3), CONTENT_W, Inches(0.7), colors["bg_alt"],
-              line_color=colors["rule"])
-    _add_rect(slide, MARGIN_L, Inches(0.3), Inches(0.08), Inches(0.7), colors["primary"])
-    _add_textbox(slide, MARGIN_L + Inches(0.3), Inches(0.3), CONTENT_W - Inches(0.6), Inches(0.7),
+    # 标题区域 - 带左侧色条和图标背景
+    _add_rounded_rect(slide, MARGIN_L, Inches(0.3), CONTENT_W, Inches(0.75), colors["bg_alt"],
+                     line_color=colors["rule"])
+    _add_rect(slide, MARGIN_L, Inches(0.3), Inches(0.1), Inches(0.75), colors["primary"])
+    # 标题前的小方块图标
+    _add_rect(slide, MARGIN_L + Inches(0.3), Inches(0.5), Inches(0.35), Inches(0.35), colors["primary"])
+    _add_textbox(slide, MARGIN_L + Inches(0.8), Inches(0.3), CONTENT_W - Inches(1.1), Inches(0.75),
                  title, font_size=24, bold=True, color=colors["primary_dark"],
                  anchor=MSO_ANCHOR.MIDDLE)
 
-    content_top = Inches(1.3)
+    content_top = Inches(1.35)
     content_height = Inches(5.0)
 
     # 正文（bullet points 优先）

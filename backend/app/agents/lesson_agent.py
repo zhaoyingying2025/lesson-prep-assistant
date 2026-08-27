@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..core.llm import get_llm
 from ..core.prompts import LESSON_SYSTEM, LESSON_USER_TEMPLATE
+from ..core.prompt_loader import inject_domain_context, get_subject_cn
 from ..models.schemas import LessonParams, LessonPlan, LessonStage
 
 
@@ -38,11 +39,13 @@ async def generate_lesson(
     knowledge_points: list[dict],
     params: LessonParams,
     textbook_context: str = "",
+    subject: Optional[str] = None,
 ) -> LessonPlan:
     """基于知识点生成六阶段教案
 
     Args:
         textbook_context: 教材原文参考，用于知识点解释时引用教材原文
+        subject: 学科标识(如 math/chinese/english/physics 等), 用于注入学科领域规则
     """
     llm = get_llm()
 
@@ -68,7 +71,10 @@ async def generate_lesson(
         params_json=json.dumps(params_dict, ensure_ascii=False, indent=2),
     )
 
-    data = await llm.chat_json(LESSON_SYSTEM, user_prompt, temperature=0.7)
+    # 注入学科领域规则 (借鉴 ai-teaching-ppt 的多槽位注入)
+    system_prompt = inject_domain_context(LESSON_SYSTEM, subject)
+
+    data = await llm.chat_json(system_prompt, user_prompt, temperature=0.7)
 
     # 后处理：校验时间总和
     stages_raw = data.get("stages", [])
