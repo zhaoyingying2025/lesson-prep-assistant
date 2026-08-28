@@ -3,18 +3,24 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from ..core.llm import get_llm
 from ..core.prompts import SMART_EXTRACT_SYSTEM, SMART_EXTRACT_USER_TEMPLATE
+from ..core.prompt_loader import inject_domain_context
 
 
 async def smart_extract(
     course_name: str,
     filenames: str,
     text: str,
+    subject: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Extract chapter structure and knowledge points from textbook content."""
+    """Extract chapter structure and knowledge points from textbook content.
+
+    Args:
+        subject: 学科标识(如 math/chinese/english/physics 等), 用于注入学科领域规则
+    """
     llm = get_llm()
     max_input = 25000
     truncated = text[:max_input] if len(text) > max_input else text
@@ -25,7 +31,10 @@ async def smart_extract(
         text=truncated,
     )
 
-    data = await llm.chat_json(SMART_EXTRACT_SYSTEM, user_prompt, temperature=0.3)
+    # 注入学科领域规则 (借鉴 ai-teaching-ppt 的多槽位注入)
+    system_prompt = inject_domain_context(SMART_EXTRACT_SYSTEM, subject)
+
+    data = await llm.chat_json(system_prompt, user_prompt, temperature=0.3)
 
     chapters = data.get("chapters", [])
     if not isinstance(chapters, list):

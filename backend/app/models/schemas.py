@@ -8,10 +8,26 @@ from pydantic import BaseModel, Field
 
 
 # ============ 课程 ============
+# 支持的学科列表(对应 backend/app/core/domains/*.md)
+SUPPORTED_SUBJECTS = [
+    "math", "chinese", "english", "physics", "chemistry",
+    "biology", "history", "geography", "politics", "it", "other",
+]
+
+
 class CourseCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="课程名称")
     major: Optional[str] = Field(None, description="所属专业/院系")
     description: Optional[str] = None
+    subject: Optional[str] = Field(None, description="学科标识: math/chinese/english/physics 等")
+
+
+class CourseUpdate(BaseModel):
+    """更新课程(全部字段可选)"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    major: Optional[str] = None
+    description: Optional[str] = None
+    subject: Optional[str] = Field(None, description="学科标识")
 
 
 class CourseOut(BaseModel):
@@ -19,13 +35,21 @@ class CourseOut(BaseModel):
     name: str
     major: Optional[str] = None
     description: Optional[str] = None
+    subject: Optional[str] = None
     created_at: datetime
 
 
 # ============ 教材资源 ============
+# 六类枚举：syllabus(课程标准/大纲)、textbook(教科书)、reference(教参教辅)、
+# exercise_book(练习题册)、paper(学术论文)、other(其他)
 MaterialType = Literal[
-    "textbook", "syllabus", "training_plan", "handout", "paper", "other"
+    "syllabus", "textbook", "reference", "exercise_book", "paper", "other"
 ]
+# 向后兼容：旧枚举值 -> 新枚举值
+LEGACY_MATERIAL_TYPE_MAP = {
+    "training_plan": "syllabus",
+    "handout": "reference",
+}
 
 
 class MaterialOut(BaseModel):
@@ -33,6 +57,8 @@ class MaterialOut(BaseModel):
     course_id: int
     filename: str
     material_type: MaterialType
+    version_label: str = ""
+    is_primary: bool = False
     file_size: int
     content_preview: str
     char_count: int
@@ -41,6 +67,19 @@ class MaterialOut(BaseModel):
 
 # ============ 知识点 ============
 KnowledgeLayer = Literal["basic", "core", "extension"]
+
+
+class AccuracyMeta(BaseModel):
+    """联网准确性校验结果"""
+    accuracy_score: int = Field(3, ge=0, le=5, description="准确性评分0-5")
+    accuracy_reason: str = Field("", description="校验说明")
+    accuracy_flag: Literal["pass", "warn", "fail"] = Field("warn", description="通过/警告/不通过")
+
+
+class KnowledgeRelation(BaseModel):
+    """知识点间关系"""
+    target: str = Field(..., description="关联知识点名称")
+    rel_type: str = Field("依赖", description="关系类型: 依赖/支撑/组成/对比/应用")
 
 
 class KnowledgePoint(BaseModel):
@@ -55,6 +94,8 @@ class KnowledgePoint(BaseModel):
     is_difficult: bool = Field(False, description="是否难点")
     is_exam_point: bool = Field(False, description="是否考点")
     prerequisites: list[str] = Field(default_factory=list, description="前置知识点")
+    relationships: list[KnowledgeRelation] = Field(default_factory=list, description="关联关系（含类型）")
+    accuracy: Optional[AccuracyMeta] = Field(None, description="联网准确性校验结果")
 
 
 class KnowledgeExtractionResult(BaseModel):
@@ -67,7 +108,7 @@ class KnowledgeExtractionResult(BaseModel):
 # ============ 教案 ============
 class LessonParams(BaseModel):
     """教案自定义参数"""
-    total_minutes: int = Field(90, ge=30, le=180)
+    total_minutes: int = Field(90, ge=15, le=180)
     intro_ratio: float = Field(0.10, ge=0.05, le=0.20, description="导入时间占比")
     interact_ratio: float = Field(0.15, ge=0.05, le=0.30, description="互动占比")
     intro_style: Literal["auto", "scenario", "question", "case", "review", "media"] = "auto"
@@ -155,6 +196,36 @@ class ApiResponse(BaseModel):
     success: bool = True
     message: str = ""
     data: Optional[dict | list] = None
+
+
+# ============ 教案模板库 ============
+class LessonTemplateCreate(BaseModel):
+    """新建教案模板"""
+    course_id: Optional[int] = Field(None, description="所属课程ID，None为全局模板")
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = ""
+    structure_json: dict = Field(default_factory=dict)
+    is_default: bool = False
+
+
+class LessonTemplateUpdate(BaseModel):
+    """更新教案模板"""
+    name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = None
+    structure_json: Optional[dict] = None
+    is_default: Optional[bool] = None
+
+
+class LessonTemplateOut(BaseModel):
+    """教案模板输出"""
+    id: int
+    course_id: Optional[int]
+    name: str
+    description: str
+    structure_json: dict
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 # ============ LLM 设置 ============
