@@ -1,1793 +1,10 @@
-﻿<!DOCTYPE html>
-<html lang="zh-CN" data-theme="light">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>备课助手 · 智能备课伴侣</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <!-- markmap 思维导图 -->
-  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.16.3/dist/browser/index.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.16.3/dist/browser/index.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            // 青绿水墨配色
-            ink: '#2c1810',       // 墨色
-            'ink-2': '#5a4030',    // 浅墨
-            muted: '#8a7968',      // 灰墨
-            teal: {
-              50: '#f0f7f5',
-              100: '#d9ebe6',
-              200: '#b3d7cd',
-              300: '#7fbab0',
-              400: '#4a9d8f',
-              500: '#2e7d6e',     // 主青绿
-              600: '#236658',
-              700: '#1c5247',
-              800: '#173f37',
-              900: '#0f2b25',
-            },
-            ochre: '#c75c2e',      // 赭石
-            paper: '#faf8f5',      // 宣纸白
-            'paper-2': '#f3efe8',
-            rule: 'rgba(44,24,16,0.10)',
-          },
-          fontFamily: {
-            sans: ['"Noto Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
-            serif: ['"Noto Serif SC"', 'serif'],
-          },
-          boxShadow: {
-            'soft': '0 2px 8px rgba(44,24,16,0.06)',
-            'md-soft': '0 8px 32px rgba(44,24,16,0.08)',
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    * { -webkit-font-smoothing: antialiased; }
-    body { font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
-
-    /* 水墨背景纹理 */
-    body::before {
-      content: "";
-      position: fixed; inset: 0; z-index: -2;
-      background: var(--bg-grad-1), var(--bg-grad-2);
-      pointer-events: none;
-    }
-    body::after {
-      content: "";
-      position: fixed; inset: 0; z-index: -1; opacity: 0.25;
-      background-image: var(--bg-pattern);
-      pointer-events: none;
-    }
-
-    /* 滚动条 */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--scrollbar, rgba(46,125,110,0.3)); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover, rgba(46,125,110,0.5)); }
-
-    /* 通用动画 */
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
-
-    /* 加载呼吸 */
-    .breathing { animation: breathe 1.8s ease-in-out infinite; }
-    @keyframes breathe { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-
-    /* 消息气泡 */
-    .bubble-user {
-      background: linear-gradient(135deg, #2e7d6e, #236658);
-      color: white;
-    }
-    .bubble-ai {
-      background: var(--bubble-ai-bg, #ffffff);
-      border: 1px solid var(--bubble-ai-border, rgba(46,125,110,0.15));
-      color: var(--text-primary, #2c1810);
-    }
-
-    /* 按钮 */
-    .btn-primary {
-      background: var(--btn-primary-bg, linear-gradient(135deg, #2e7d6e, #236658));
-      color: white;
-      transition: all 0.2s;
-    }
-    .btn-primary:hover { box-shadow: 0 4px 12px var(--btn-primary-shadow, rgba(46,125,110,0.35)); transform: translateY(-1px); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-
-    .btn-ghost {
-      background: var(--btn-ghost-bg, transparent);
-      color: var(--btn-ghost-text, #2e7d6e);
-      border: 1px solid var(--btn-ghost-border, rgba(46,125,110,0.3));
-      transition: all 0.2s;
-    }
-    .btn-ghost:hover { background: var(--btn-ghost-hover-bg, rgba(46,125,110,0.06)); border-color: var(--btn-ghost-hover-border, #2e7d6e); }
-
-    /* 标签 */
-    .tag { font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; font-weight: 500; }
-    .tag-key { background: var(--tag-key-bg, rgba(199,92,46,0.12)); color: var(--tag-key-text, #c75c2e); }
-    .tag-diff { background: var(--tag-diff-bg, rgba(245,158,11,0.15)); color: var(--tag-diff-text, #b45309); }
-    .tag-exam { background: var(--tag-exam-bg, rgba(46,125,110,0.12)); color: var(--tag-exam-text, #2e7d6e); }
-    .tag-basic { background: var(--tag-basic-bg, rgba(99,102,176,0.10)); color: var(--tag-basic-text, #6366b0); }
-    .tag-core { background: var(--tag-core-bg, rgba(199,92,46,0.10)); color: var(--tag-core-text, #c75c2e); }
-    .tag-ext { background: var(--tag-ext-bg, rgba(46,125,110,0.10)); color: var(--tag-ext-text, #2e7d6e); }
-
-    /* 分隔线 */
-    .ink-divider {
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--divider, rgba(46,125,110,0.3)), transparent);
-    }
-
-    /* 教案预览排版 - 全表格形式 */
-.lesson-preview { font-size: 0.85rem; }
-.lesson-preview h1 { font-family: "Noto Serif SC"; font-weight: 700; font-size: 1.3rem; color: var(--lp-h1, #1c5247); margin: 0; padding: 8px 0; text-align: center; }
-.lesson-preview h2 { font-family: "Noto Serif SC"; font-weight: 700; font-size: 0.95rem; margin: 0; padding: 6px 8px; background: var(--lp-h2-bg, linear-gradient(135deg, #2e7d6e, #236658)); color: white; border-radius: 0; }
-.lesson-preview h3 { font-weight: 600; font-size: 0.85rem; color: var(--lp-h3, #236658); margin: 0; padding: 4px 8px; }
-.lesson-preview p { margin: 0; line-height: 1.75; }
-.lesson-preview ul { padding-left: 1.2rem; margin: 0; }
-.lesson-preview li { margin: 0.15rem 0; line-height: 1.7; }
-
-/* 通用表格样式 */
-.lesson-preview table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-.lesson-preview table td, .lesson-preview table th { border: 1px solid var(--lp-th-border, rgba(46,125,110,0.25)); padding: 6px 8px; vertical-align: top; }
-.lesson-preview table th { background: var(--lp-th-bg, rgba(46,125,110,0.12)); font-weight: 600; color: var(--lp-th-text, #1c5247); text-align: left; font-size: 0.8rem; }
-
-/* 标题表格 */
-.lesson-preview table.title-table { margin-bottom: 0; }
-.lesson-preview table.title-table td { text-align: center; border: 2px solid var(--accent, #2e7d6e); }
-
-/* 基本信息表格 */
-.lesson-preview table.info-table td:first-child { width: 100px; background: var(--lp-info-label, rgba(46,125,110,0.06)); font-weight: 500; color: var(--lp-info-label-text, #236658); }
-
-/* 教学目标表格 */
-.lesson-preview table.goal-table td:first-child { width: 110px; text-align: center; font-weight: 600; }
-.lesson-preview table.goal-table .goal-knowledge { background: var(--lp-goal-knowledge-bg, rgba(99,102,176,0.10)); color: var(--lp-goal-knowledge-text, #6366b0); }
-.lesson-preview table.goal-table .goal-ability { background: var(--lp-goal-ability-bg, rgba(199,92,46,0.10)); color: var(--lp-goal-ability-text, #c75c2e); }
-.lesson-preview table.goal-table .goal-value { background: var(--lp-goal-value-bg, rgba(46,125,110,0.10)); color: var(--lp-goal-value-text, #2e7d6e); }
-
-/* 教学重难点表格 */
-.lesson-preview table.key-diff-table td:first-child { width: 70px; text-align: center; font-weight: 600; }
-.lesson-preview table.key-diff-table .td-key { background: var(--tag-key-bg, rgba(199,92,46,0.08)); color: var(--tag-key-text, #c75c2e); }
-.lesson-preview table.key-diff-table .td-diff { background: var(--tag-diff-bg, rgba(245,158,11,0.08)); color: var(--tag-diff-text, #b45309); }
-
-/* 教学过程表格 */
-.lesson-preview table.stages-table { font-size: 0.8rem; }
-.lesson-preview table.stages-table th { background: var(--lp-stage-th-bg, linear-gradient(135deg, #2e7d6e, #236658)); color: white; font-weight: 600; font-size: 0.75rem; text-align: center; }
-.lesson-preview table.stages-table td { text-align: left; }
-.lesson-preview table.stages-table .stage-name { font-weight: 600; color: var(--lp-stage-name, #236658); white-space: nowrap; }
-.lesson-preview table.stages-table tr:nth-child(even) td { background: var(--lp-stage-even, rgba(46,125,110,0.04)); }
-
-/* 板书设计表格 */
-.lesson-preview table.board-table td { vertical-align: top; }
-.lesson-preview table.board-table td:first-child { width: 80px; background: var(--lp-info-label, rgba(46,125,110,0.06)); font-weight: 500; }
-
-/* 课后作业表格 */
-.lesson-preview table.homework-table td:first-child { width: 40px; text-align: center; font-weight: 600; color: var(--lp-stage-name, #236658); }
-
-/* 教学反思表格 */
-.lesson-preview table.reflection-table td { min-height: 80px; }
-
-/* 教案记录列表 */
-.lesson-item {
-  display: flex;
-  align-items: center;
-  padding: 3px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.75rem;
-}
-.lesson-item:hover { background: var(--record-hover, rgba(46,125,110,0.08)); }
-.lesson-item.active { background: var(--record-active, rgba(46,125,110,0.14)); }
-.lesson-item .lesson-icon { width: 14px; height: 14px; color: var(--accent, #4a9d8f); margin-right: 4px; flex-shrink: 0; }
-.lesson-item .lesson-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary, #2c1810); }
-.lesson-item.active .lesson-name { color: var(--record-active-text, #1c5247); font-weight: 500; }
-.lesson-item.active .lesson-name { color: var(--record-active-text, #1c5247); font-weight: 500; }
-.lesson-item .lesson-date { font-size: 0.65rem; color: var(--text-muted, #8a7968); margin-left: 4px; flex-shrink: 0; }
-
-/* PPT记录列表 */
-.ppt-item {
-  display: flex;
-  align-items: center;
-  padding: 3px 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.75rem;
-}
-.ppt-item:hover { background: var(--record-hover, rgba(46,125,110,0.08)); }
-.ppt-item .ppt-icon { width: 14px; height: 14px; color: var(--tag-key-text, #c75c2e); margin-right: 4px; flex-shrink: 0; }
-.ppt-item .ppt-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary, #2c1810); }
-.ppt-item .ppt-date { font-size: 0.65rem; color: var(--text-muted, #8a7968); margin-left: 4px; flex-shrink: 0; }
-.ppt-item .ppt-dl-btn { color: var(--accent, #2e7d6e); padding: 0 2px; flex-shrink: 0; display: none; }
-.ppt-item:hover .ppt-dl-btn { display: inline; }
-.ppt-item .ppt-dl-btn:hover { color: var(--text-accent-bright, #236658); }
-
-/* 侧栏拖拽排序 */
-.sidebar-section { transition: transform 0.15s ease, opacity 0.15s ease; }
-.sidebar-section.dragging { opacity: 0.5; transform: scale(0.97); }
-.drag-handle { font-size: 14px; line-height: 1; padding: 0 2px; user-select: none; }
-.drag-handle:active { cursor: grabbing; }
-
-/* 上传区拖拽 */
-    .drop-zone { transition: all 0.2s; }
-    .drop-zone.dragover { background: var(--accent-light, rgba(46,125,110,0.08)); border-color: var(--accent, #2e7d6e); }
-
-    /* 输入框 */
-    .input-ink {
-      background: var(--input-bg, #ffffff);
-      border: 1px solid var(--input-border, rgba(46,125,110,0.2));
-      transition: all 0.2s;
-    }
-    .input-ink:focus { outline: none; border-color: var(--accent, #2e7d6e); box-shadow: 0 0 0 3px var(--input-focus-shadow, rgba(46,125,110,0.1)); }
-
-    /* 三栏拖动分隔条 */
-    .resizer {
-      flex-shrink: 0;
-      width: 8px;
-      cursor: col-resize;
-      background: transparent;
-      position: relative;
-      z-index: 20;
-      transition: background 0.15s;
-      touch-action: none;
-    }
-    .resizer::before {
-      content: "";
-      position: absolute;
-      left: 3px; top: 0; bottom: 0;
-      width: 2px;
-      background: var(--resizer-bg, rgba(46,125,110,0.2));
-      border-radius: 1px;
-      transition: all 0.2s;
-    }
-    .resizer:hover::before, .resizer.active::before {
-      left: 2px;
-      width: 4px;
-      background: var(--resizer-hover, rgba(46,125,110,0.6));
-      border-radius: 2px;
-    }
-    .resizer.active {
-      background: var(--accent-light, rgba(46,125,110,0.05));
-    }
-    body.resizing { cursor: col-resize !important; }
-    body.resizing * { user-select: none !important; cursor: col-resize !important; }
-    body.resizing .resizer { cursor: col-resize !important; }
-
-    /* 垂直拖动分隔条（左侧栏内） */
-    .resizer-h {
-      flex-shrink: 0;
-      height: 6px;
-      cursor: row-resize;
-      background: transparent;
-      position: relative;
-      z-index: 20;
-      transition: background 0.15s;
-      touch-action: none;
-      margin: 0 -8px; /* 扩大点击区域 */
-    }
-    .resizer-h::before {
-      content: "";
-      position: absolute;
-      left: 8px; right: 8px;
-      top: 2px;
-      height: 2px;
-      background: var(--resizer-bg, rgba(46,125,110,0.2));
-      border-radius: 1px;
-      transition: all 0.2s;
-    }
-    .resizer-h:hover::before, .resizer-h.active::before {
-      top: 1px;
-      height: 4px;
-      background: var(--resizer-hover, rgba(46,125,110,0.6));
-      border-radius: 2px;
-    }
-    .resizer-h.active {
-      background: var(--accent-light, rgba(46,125,110,0.05));
-    }
-    body.resizing-v { cursor: row-resize !important; }
-    body.resizing-v * { user-select: none !important; cursor: row-resize !important; }
-    body.resizing-v .resizer-h { cursor: row-resize !important; }
-
-    /* 教案预览表格 */
-    .lesson-preview table.lesson-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-      margin: 0.5rem 0;
-    }
-    .lesson-preview table.lesson-table th {
-      background: var(--lp-th-bg, rgba(46,125,110,0.10));
-      color: var(--lp-th-text, #1c5247);
-      font-weight: 600;
-      padding: 6px 8px;
-      border: 1px solid var(--lp-th-border, rgba(46,125,110,0.25));
-      text-align: left;
-      font-size: 0.75rem;
-    }
-    .lesson-preview table.lesson-table td {
-      padding: 6px 8px;
-      border: 1px solid var(--lp-td-border, rgba(46,125,110,0.20));
-      vertical-align: top;
-      line-height: 1.6;
-    }
-    .lesson-preview table.lesson-table tr:nth-child(even) td {
-      background: var(--lp-stage-even, rgba(46,125,110,0.03));
-    }
-    .lesson-preview table.lesson-table .stage-name {
-      font-weight: 600;
-      color: var(--lp-stage-name, #236658);
-      white-space: nowrap;
-    }
-
-    /* ============ 章节树（借鉴 Trae）============ */
-    .chapter-tree { font-size: 0.8rem; }
-    .chapter-node { position: relative; }
-    .chapter-row {
-      display: flex;
-      align-items: center;
-      padding: 3px 4px;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.15s;
-      gap: 2px;
-      user-select: none;
-    }
-    .chapter-row:hover { background: var(--chapter-hover, rgba(46,125,110,0.06)); }
-    .chapter-row.active { background: var(--chapter-active, rgba(46,125,110,0.14)); color: var(--chapter-active-text, #1c5247); font-weight: 500; }
-    .chapter-toggle {
-      width: 14px; height: 14px;
-      display: inline-flex; align-items: center; justify-content: center;
-      color: var(--text-muted, #8a7968);
-      transition: transform 0.15s;
-      flex-shrink: 0;
-    }
-    .chapter-toggle.expanded { transform: rotate(90deg); }
-    .chapter-toggle.leaf { visibility: hidden; }
-    .chapter-icon {
-      width: 14px; height: 14px;
-      color: var(--accent, #2e7d6e);
-      flex-shrink: 0;
-      margin-right: 2px;
-    }
-    .chapter-name {
-      flex: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 0.78rem;
-      color: var(--text-primary, #2c1810);
-    }
-    .chapter-row.active .chapter-name { color: var(--chapter-active-text, #1c5247); font-weight: 500; }
-    .chapter-menu-btn {
-      width: 18px; height: 18px;
-      display: none;
-      align-items: center; justify-content: center;
-      color: var(--text-muted, #8a7968);
-      border-radius: 3px;
-      flex-shrink: 0;
-    }
-    .chapter-row:hover .chapter-menu-btn { display: flex; }
-    .chapter-menu-btn:hover { background: var(--accent-medium, rgba(46,125,110,0.15)); color: var(--accent, #2e7d6e); }
-    .chapter-children {
-      margin-left: 12px;
-      border-left: 1px dashed var(--accent-medium, rgba(46,125,110,0.18));
-      padding-left: 4px;
-      overflow: hidden;
-    }
-    .chapter-children.collapsed { display: none; }
-
-    /* 三点下拉菜单 */
-    .chapter-context-menu {
-      position: fixed;
-      z-index: 100;
-      min-width: 140px;
-      background: var(--ctx-menu-bg, #ffffff);
-      border: 1px solid var(--ctx-menu-border, rgba(46,125,110,0.2));
-      border-radius: 6px;
-      box-shadow: 0 8px 24px var(--ctx-menu-shadow, rgba(44,24,16,0.12));
-      overflow: hidden;
-      padding: 4px 0;
-    }
-    .chapter-context-menu .menu-item {
-      padding: 6px 14px;
-      font-size: 0.75rem;
-      color: var(--ctx-menu-text, #2c1810);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: background 0.12s;
-    }
-    .chapter-context-menu .menu-item:hover { background: var(--ctx-menu-hover, rgba(46,125,110,0.08)); color: var(--ctx-menu-hover-text, #1c5247); }
-    .chapter-context-menu .menu-item.danger:hover { background: var(--ctx-menu-danger-hover, rgba(199,92,46,0.10)); color: var(--ctx-menu-danger-text, #c75c2e); }
-    .chapter-context-menu .menu-item .menu-icon { width: 12px; height: 12px; }
-    .chapter-context-menu .menu-divider { height: 1px; background: var(--accent-medium, rgba(46,125,110,0.12)); margin: 4px 0; }
-
-    /* ============ 主题系统：CSS 变量 ============ */
-    :root {
-      /* 背景 */
-      --bg-grad-1: radial-gradient(ellipse 80% 50% at 15% 5%, rgba(46,125,110,0.05), transparent 60%);
-      --bg-grad-2: radial-gradient(ellipse 70% 50% at 85% 95%, rgba(199,92,46,0.04), transparent 60%);
-      --bg-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%234a9d8f' fill-opacity='0.08'%3E%3Cpath d='M20 20c0-5.5-4.5-10-10-10S0 14.5 0 20s4.5 10 10 10 10-4.5 10-10zm10 0c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z'/%3E%3C/g%3E%3C/svg%3E");
-      --bg-body: #faf8f5;
-      --bg-body-text: #2c1810;
-
-      /* 滚动条 */
-      --scrollbar: rgba(46,125,110,0.3);
-      --scrollbar-hover: rgba(46,125,110,0.5);
-
-      /* 文字 */
-      --text-primary: #2c1810;
-      --text-muted: #8a7968;
-      --text-accent-bright: #236658;
-
-      /* 强调色 */
-      --accent: #2e7d6e;
-      --accent-light: rgba(46,125,110,0.08);
-      --accent-medium: rgba(46,125,110,0.18);
-
-      /* 气泡 */
-      --bubble-ai-bg: #ffffff;
-      --bubble-ai-border: rgba(46,125,110,0.15);
-
-      /* 按钮 */
-      --btn-primary-bg: linear-gradient(135deg, #2e7d6e, #236658);
-      --btn-primary-shadow: rgba(46,125,110,0.35);
-      --btn-ghost-bg: transparent;
-      --btn-ghost-border: rgba(46,125,110,0.3);
-      --btn-ghost-text: #2e7d6e;
-      --btn-ghost-hover-bg: rgba(46,125,110,0.06);
-      --btn-ghost-hover-border: #2e7d6e;
-      --btn-ghost-hover-text: #2e7d6e;
-
-      /* 标签 */
-      --tag-key-bg: rgba(199,92,46,0.12);
-      --tag-key-text: #c75c2e;
-      --tag-diff-bg: rgba(245,158,11,0.15);
-      --tag-diff-text: #b45309;
-      --tag-exam-bg: rgba(46,125,110,0.12);
-      --tag-exam-text: #2e7d6e;
-      --tag-basic-bg: rgba(99,102,176,0.10);
-      --tag-basic-text: #6366b0;
-      --tag-core-bg: rgba(199,92,46,0.10);
-      --tag-core-text: #c75c2e;
-      --tag-ext-bg: rgba(46,125,110,0.10);
-      --tag-ext-text: #2e7d6e;
-
-      /* 分隔线 */
-      --divider: rgba(46,125,110,0.3);
-
-      /* 教案预览 */
-      --lp-h1: #1c5247;
-      --lp-h2-bg: linear-gradient(135deg, #2e7d6e, #236658);
-      --lp-h3: #236658;
-      --lp-th-bg: rgba(46,125,110,0.12);
-      --lp-th-text: #1c5247;
-      --lp-th-border: rgba(46,125,110,0.25);
-      --lp-td-border: rgba(46,125,110,0.25);
-      --lp-td-text: #2c1810;
-      --lp-info-label: rgba(46,125,110,0.06);
-      --lp-info-label-text: #236658;
-      --lp-stage-th-bg: linear-gradient(135deg, #2e7d6e, #236658);
-      --lp-stage-name: #236658;
-      --lp-stage-even: rgba(46,125,110,0.04);
-      --lp-goal-knowledge-bg: rgba(99,102,176,0.10);
-      --lp-goal-knowledge-text: #6366b0;
-      --lp-goal-ability-bg: rgba(199,92,46,0.10);
-      --lp-goal-ability-text: #c75c2e;
-      --lp-goal-value-bg: rgba(46,125,110,0.10);
-      --lp-goal-value-text: #2e7d6e;
-
-      /* 记录 */
-      --record-hover: rgba(46,125,110,0.08);
-      --record-active: rgba(46,125,110,0.14);
-      --record-active-text: #1c5247;
-
-      /* 输入框 */
-      --input-bg: #ffffff;
-      --input-border: rgba(46,125,110,0.2);
-      --input-focus-shadow: rgba(46,125,110,0.1);
-
-      /* 分隔条 */
-      --resizer-bg: rgba(46,125,110,0.2);
-      --resizer-hover: rgba(46,125,110,0.6);
-
-      /* 章节树 */
-      --chapter-hover: rgba(46,125,110,0.06);
-      --chapter-active: rgba(46,125,110,0.14);
-      --chapter-active-text: #1c5247;
-
-      /* 上下文菜单 */
-      --ctx-menu-bg: #ffffff;
-      --ctx-menu-border: rgba(46,125,110,0.2);
-      --ctx-menu-shadow: rgba(44,24,16,0.12);
-      --ctx-menu-text: #2c1810;
-      --ctx-menu-hover: rgba(46,125,110,0.08);
-      --ctx-menu-hover-text: #1c5247;
-      --ctx-menu-danger-hover: rgba(199,92,46,0.10);
-      --ctx-menu-danger-text: #c75c2e;
-
-      /* 下拉菜单 */
-      --dropdown-bg: #ffffff;
-      --dropdown-border: rgba(46,125,110,0.12);
-      --dropdown-shadow: rgba(0,0,0,0.08);
-
-      /* 光标 */
-      --caret-color: #2e7d6e;
-    }
-
-    /* ============ 主题：暖阳赭石 ============ */
-    [data-theme="warm"] {
-      --bg-grad-1: radial-gradient(ellipse 80% 50% at 15% 5%, rgba(199,92,46,0.06), transparent 60%);
-      --bg-grad-2: radial-gradient(ellipse 70% 50% at 85% 95%, rgba(245,158,11,0.05), transparent 60%);
-      --bg-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23c75c2e' fill-opacity='0.06'%3E%3Cpath d='M20 20c0-5.5-4.5-10-10-10S0 14.5 0 20s4.5 10 10 10 10-4.5 10-10zm10 0c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z'/%3E%3C/g%3E%3C/svg%3E");
-      --bg-body: #fdf8f3;
-      --bg-body-text: #3d2b1f;
-      --scrollbar: rgba(199,92,46,0.3);
-      --scrollbar-hover: rgba(199,92,46,0.5);
-      --text-primary: #3d2b1f;
-      --text-muted: #9a7b64;
-      --text-accent-bright: #b84a1e;
-      --accent: #c75c2e;
-      --accent-light: rgba(199,92,46,0.08);
-      --accent-medium: rgba(199,92,46,0.18);
-      --bubble-ai-bg: #ffffff;
-      --bubble-ai-border: rgba(199,92,46,0.15);
-      --btn-primary-bg: linear-gradient(135deg, #c75c2e, #b84a1e);
-      --btn-primary-shadow: rgba(199,92,46,0.35);
-      --btn-ghost-bg: transparent;
-      --btn-ghost-border: rgba(199,92,46,0.3);
-      --btn-ghost-text: #c75c2e;
-      --btn-ghost-hover-bg: rgba(199,92,46,0.06);
-      --btn-ghost-hover-border: #c75c2e;
-      --btn-ghost-hover-text: #c75c2e;
-      --tag-key-bg: rgba(199,92,46,0.12);
-      --tag-key-text: #c75c2e;
-      --tag-diff-bg: rgba(245,158,11,0.15);
-      --tag-diff-text: #b45309;
-      --tag-exam-bg: rgba(199,92,46,0.12);
-      --tag-exam-text: #c75c2e;
-      --tag-basic-bg: rgba(180,120,60,0.10);
-      --tag-basic-text: #8a6a3a;
-      --tag-core-bg: rgba(199,92,46,0.10);
-      --tag-core-text: #c75c2e;
-      --tag-ext-bg: rgba(199,92,46,0.10);
-      --tag-ext-text: #c75c2e;
-      --divider: rgba(199,92,46,0.3);
-      --lp-h1: #b84a1e;
-      --lp-h2-bg: linear-gradient(135deg, #c75c2e, #b84a1e);
-      --lp-h3: #b84a1e;
-      --lp-th-bg: rgba(199,92,46,0.12);
-      --lp-th-text: #b84a1e;
-      --lp-th-border: rgba(199,92,46,0.25);
-      --lp-td-border: rgba(199,92,46,0.20);
-      --lp-td-text: #3d2b1f;
-      --lp-info-label: rgba(199,92,46,0.06);
-      --lp-info-label-text: #b84a1e;
-      --lp-stage-th-bg: linear-gradient(135deg, #c75c2e, #b84a1e);
-      --lp-stage-name: #b84a1e;
-      --lp-stage-even: rgba(199,92,46,0.04);
-      --lp-goal-knowledge-bg: rgba(180,120,60,0.10);
-      --lp-goal-knowledge-text: #8a6a3a;
-      --lp-goal-ability-bg: rgba(199,92,46,0.10);
-      --lp-goal-ability-text: #c75c2e;
-      --lp-goal-value-bg: rgba(245,158,11,0.10);
-      --lp-goal-value-text: #b45309;
-      --record-hover: rgba(199,92,46,0.08);
-      --record-active: rgba(199,92,46,0.14);
-      --record-active-text: #b84a1e;
-      --input-bg: #ffffff;
-      --input-border: rgba(199,92,46,0.2);
-      --input-focus-shadow: rgba(199,92,46,0.1);
-      --resizer-bg: rgba(199,92,46,0.2);
-      --resizer-hover: rgba(199,92,46,0.6);
-      --chapter-hover: rgba(199,92,46,0.06);
-      --chapter-active: rgba(199,92,46,0.14);
-      --chapter-active-text: #b84a1e;
-      --ctx-menu-bg: #ffffff;
-      --ctx-menu-border: rgba(199,92,46,0.2);
-      --ctx-menu-shadow: rgba(61,43,31,0.12);
-      --ctx-menu-text: #3d2b1f;
-      --ctx-menu-hover: rgba(199,92,46,0.08);
-      --ctx-menu-hover-text: #b84a1e;
-      --ctx-menu-danger-hover: rgba(199,92,46,0.10);
-      --ctx-menu-danger-text: #c75c2e;
-      --dropdown-bg: #ffffff;
-      --dropdown-border: rgba(199,92,46,0.12);
-      --dropdown-shadow: rgba(0,0,0,0.08);
-      --caret-color: #c75c2e;
-    }
-
-    /* ============ 主题：护眼米黄 ============ */
-    [data-theme="paper"] {
-      --bg-grad-1: radial-gradient(ellipse 80% 50% at 15% 5%, rgba(218,190,150,0.15), transparent 60%);
-      --bg-grad-2: radial-gradient(ellipse 70% 50% at 85% 95%, rgba(200,170,120,0.10), transparent 60%);
-      --bg-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23b8a080' fill-opacity='0.10'%3E%3Cpath d='M20 20c0-5.5-4.5-10-10-10S0 14.5 0 20s4.5 10 10 10 10-4.5 10-10zm10 0c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z'/%3E%3C/g%3E%3C/svg%3E");
-      --bg-body: #f5f0e8;
-      --bg-body-text: #3d3228;
-      --scrollbar: rgba(180,160,130,0.4);
-      --scrollbar-hover: rgba(180,160,130,0.6);
-      --text-primary: #3d3228;
-      --text-muted: #9a8a78;
-      --text-accent-bright: #6a5a4a;
-      --accent: #b8a080;
-      --accent-light: rgba(180,160,130,0.12);
-      --accent-medium: rgba(180,160,130,0.22);
-      --bubble-ai-bg: #faf8f2;
-      --bubble-ai-border: rgba(180,160,130,0.2);
-      --btn-primary-bg: linear-gradient(135deg, #b8a080, #9a8a78);
-      --btn-primary-shadow: rgba(180,160,130,0.35);
-      --btn-ghost-bg: transparent;
-      --btn-ghost-border: rgba(180,160,130,0.35);
-      --btn-ghost-text: #7a6a5a;
-      --btn-ghost-hover-bg: rgba(180,160,130,0.10);
-      --btn-ghost-hover-border: #9a8a78;
-      --btn-ghost-hover-text: #6a5a4a;
-      --tag-key-bg: rgba(180,160,130,0.18);
-      --tag-key-text: #6a5a4a;
-      --tag-diff-bg: rgba(200,170,120,0.20);
-      --tag-diff-text: #8a7a5a;
-      --tag-exam-bg: rgba(180,160,130,0.15);
-      --tag-exam-text: #6a5a4a;
-      --tag-basic-bg: rgba(160,150,140,0.12);
-      --tag-basic-text: #6a6050;
-      --tag-core-bg: rgba(180,160,130,0.15);
-      --tag-core-text: #6a5a4a;
-      --tag-ext-bg: rgba(180,160,130,0.12);
-      --tag-ext-text: #6a5a4a;
-      --divider: rgba(180,160,130,0.35);
-      --lp-h1: #6a5a4a;
-      --lp-h2-bg: linear-gradient(135deg, #b8a080, #9a8a78);
-      --lp-h3: #7a6a5a;
-      --lp-th-bg: rgba(180,160,130,0.15);
-      --lp-th-text: #5a4a3a;
-      --lp-th-border: rgba(180,160,130,0.30);
-      --lp-td-border: rgba(180,160,130,0.25);
-      --lp-td-text: #3d3228;
-      --lp-info-label: rgba(180,160,130,0.10);
-      --lp-info-label-text: #6a5a4a;
-      --lp-stage-th-bg: linear-gradient(135deg, #b8a080, #9a8a78);
-      --lp-stage-name: #6a5a4a;
-      --lp-stage-even: rgba(180,160,130,0.06);
-      --lp-goal-knowledge-bg: rgba(160,150,140,0.12);
-      --lp-goal-knowledge-text: #6a6050;
-      --lp-goal-ability-bg: rgba(180,160,130,0.12);
-      --lp-goal-ability-text: #6a5a4a;
-      --lp-goal-value-bg: rgba(200,170,120,0.12);
-      --lp-goal-value-text: #7a6a5a;
-      --record-hover: rgba(180,160,130,0.12);
-      --record-active: rgba(180,160,130,0.20);
-      --record-active-text: #5a4a3a;
-      --input-bg: #faf8f2;
-      --input-border: rgba(180,160,130,0.25);
-      --input-focus-shadow: rgba(180,160,130,0.15);
-      --resizer-bg: rgba(180,160,130,0.25);
-      --resizer-hover: rgba(180,160,130,0.6);
-      --chapter-hover: rgba(180,160,130,0.10);
-      --chapter-active: rgba(180,160,130,0.18);
-      --chapter-active-text: #5a4a3a;
-      --ctx-menu-bg: #faf8f2;
-      --ctx-menu-border: rgba(180,160,130,0.25);
-      --ctx-menu-shadow: rgba(61,50,40,0.12);
-      --ctx-menu-text: #3d3228;
-      --ctx-menu-hover: rgba(180,160,130,0.12);
-      --ctx-menu-hover-text: #5a4a3a;
-      --ctx-menu-danger-hover: rgba(180,160,130,0.15);
-      --ctx-menu-danger-text: #6a5a4a;
-      --dropdown-bg: #faf8f2;
-      --dropdown-border: rgba(180,160,130,0.15);
-      --dropdown-shadow: rgba(0,0,0,0.06);
-      --caret-color: #7a6a5a;
-    }
-
-    /* ============ 主题：静湖蓝调 ============ */
-    [data-theme="ocean"] {
-      --bg-grad-1: radial-gradient(ellipse 80% 50% at 15% 5%, rgba(59,130,210,0.06), transparent 60%);
-      --bg-grad-2: radial-gradient(ellipse 70% 50% at 85% 95%, rgba(99,102,241,0.04), transparent 60%);
-      --bg-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%233b82d2' fill-opacity='0.06'%3E%3Cpath d='M20 20c0-5.5-4.5-10-10-10S0 14.5 0 20s4.5 10 10 10 10-4.5 10-10zm10 0c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z'/%3E%3C/g%3E%3C/svg%3E");
-      --bg-body: #f4f8fc;
-      --bg-body-text: #1a2a3a;
-      --scrollbar: rgba(59,130,210,0.3);
-      --scrollbar-hover: rgba(59,130,210,0.5);
-      --text-primary: #1a2a3a;
-      --text-muted: #7a8a9a;
-      --text-accent-bright: #1a5a8a;
-      --accent: #3b82d2;
-      --accent-light: rgba(59,130,210,0.08);
-      --accent-medium: rgba(59,130,210,0.18);
-      --bubble-ai-bg: #ffffff;
-      --bubble-ai-border: rgba(59,130,210,0.15);
-      --btn-primary-bg: linear-gradient(135deg, #3b82d2, #2563eb);
-      --btn-primary-shadow: rgba(59,130,210,0.35);
-      --btn-ghost-bg: transparent;
-      --btn-ghost-border: rgba(59,130,210,0.3);
-      --btn-ghost-text: #3b82d2;
-      --btn-ghost-hover-bg: rgba(59,130,210,0.06);
-      --btn-ghost-hover-border: #3b82d2;
-      --btn-ghost-hover-text: #3b82d2;
-      --tag-key-bg: rgba(59,130,210,0.12);
-      --tag-key-text: #3b82d2;
-      --tag-diff-bg: rgba(99,102,241,0.15);
-      --tag-diff-text: #6366f1;
-      --tag-exam-bg: rgba(59,130,210,0.12);
-      --tag-exam-text: #3b82d2;
-      --tag-basic-bg: rgba(99,102,241,0.10);
-      --tag-basic-text: #6366f1;
-      --tag-core-bg: rgba(59,130,210,0.10);
-      --tag-core-text: #3b82d2;
-      --tag-ext-bg: rgba(59,130,210,0.10);
-      --tag-ext-text: #3b82d2;
-      --divider: rgba(59,130,210,0.3);
-      --lp-h1: #1a5a8a;
-      --lp-h2-bg: linear-gradient(135deg, #3b82d2, #2563eb);
-      --lp-h3: #1a5a8a;
-      --lp-th-bg: rgba(59,130,210,0.12);
-      --lp-th-text: #1a5a8a;
-      --lp-th-border: rgba(59,130,210,0.25);
-      --lp-td-border: rgba(59,130,210,0.20);
-      --lp-td-text: #1a2a3a;
-      --lp-info-label: rgba(59,130,210,0.06);
-      --lp-info-label-text: #1a5a8a;
-      --lp-stage-th-bg: linear-gradient(135deg, #3b82d2, #2563eb);
-      --lp-stage-name: #1a5a8a;
-      --lp-stage-even: rgba(59,130,210,0.04);
-      --lp-goal-knowledge-bg: rgba(99,102,241,0.10);
-      --lp-goal-knowledge-text: #6366f1;
-      --lp-goal-ability-bg: rgba(59,130,210,0.10);
-      --lp-goal-ability-text: #3b82d2;
-      --lp-goal-value-bg: rgba(14,165,233,0.10);
-      --lp-goal-value-text: #0ea5e9;
-      --record-hover: rgba(59,130,210,0.08);
-      --record-active: rgba(59,130,210,0.14);
-      --record-active-text: #1a5a8a;
-      --input-bg: #ffffff;
-      --input-border: rgba(59,130,210,0.2);
-      --input-focus-shadow: rgba(59,130,210,0.1);
-      --resizer-bg: rgba(59,130,210,0.2);
-      --resizer-hover: rgba(59,130,210,0.6);
-      --chapter-hover: rgba(59,130,210,0.06);
-      --chapter-active: rgba(59,130,210,0.14);
-      --chapter-active-text: #1a5a8a;
-      --ctx-menu-bg: #ffffff;
-      --ctx-menu-border: rgba(59,130,210,0.2);
-      --ctx-menu-shadow: rgba(26,42,58,0.12);
-      --ctx-menu-text: #1a2a3a;
-      --ctx-menu-hover: rgba(59,130,210,0.08);
-      --ctx-menu-hover-text: #1a5a8a;
-      --ctx-menu-danger-hover: rgba(59,130,210,0.10);
-      --ctx-menu-danger-text: #3b82d2;
-      --dropdown-bg: #ffffff;
-      --dropdown-border: rgba(59,130,210,0.12);
-      --dropdown-shadow: rgba(0,0,0,0.08);
-      --caret-color: #3b82d2;
-    }
-
-    /* ============ 主题：墨韵黑白 ============ */
-    [data-theme="ink"] {
-      --bg-grad-1: radial-gradient(ellipse 80% 50% at 15% 5%, rgba(0,0,0,0.03), transparent 60%);
-      --bg-grad-2: radial-gradient(ellipse 70% 50% at 85% 95%, rgba(0,0,0,0.02), transparent 60%);
-      --bg-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23000000' fill-opacity='0.04'%3E%3Cpath d='M20 20c0-5.5-4.5-10-10-10S0 14.5 0 20s4.5 10 10 10 10-4.5 10-10zm10 0c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10z'/%3E%3C/g%3E%3C/svg%3E");
-      --bg-body: #ffffff;
-      --bg-body-text: #1a1a1a;
-      --scrollbar: rgba(0,0,0,0.25);
-      --scrollbar-hover: rgba(0,0,0,0.45);
-      --text-primary: #1a1a1a;
-      --text-muted: #6b6b6b;
-      --text-accent-bright: #333333;
-      --accent: #333333;
-      --accent-light: rgba(0,0,0,0.06);
-      --accent-medium: rgba(0,0,0,0.15);
-      --bubble-ai-bg: #f5f5f5;
-      --bubble-ai-border: rgba(0,0,0,0.12);
-      --btn-primary-bg: linear-gradient(135deg, #333333, #1a1a1a);
-      --btn-primary-shadow: rgba(0,0,0,0.25);
-      --btn-ghost-bg: transparent;
-      --btn-ghost-border: rgba(0,0,0,0.25);
-      --btn-ghost-text: #333333;
-      --btn-ghost-hover-bg: rgba(0,0,0,0.05);
-      --btn-ghost-hover-border: #333333;
-      --btn-ghost-hover-text: #333333;
-      --tag-key-bg: rgba(0,0,0,0.08);
-      --tag-key-text: #333333;
-      --tag-diff-bg: rgba(0,0,0,0.10);
-      --tag-diff-text: #555555;
-      --tag-exam-bg: rgba(0,0,0,0.08);
-      --tag-exam-text: #333333;
-      --tag-basic-bg: rgba(0,0,0,0.06);
-      --tag-basic-text: #555555;
-      --tag-core-bg: rgba(0,0,0,0.08);
-      --tag-core-text: #333333;
-      --tag-ext-bg: rgba(0,0,0,0.06);
-      --tag-ext-text: #555555;
-      --divider: rgba(0,0,0,0.20);
-      --lp-h1: #333333;
-      --lp-h2-bg: linear-gradient(135deg, #333333, #1a1a1a);
-      --lp-h3: #333333;
-      --lp-th-bg: rgba(0,0,0,0.08);
-      --lp-th-text: #1a1a1a;
-      --lp-th-border: rgba(0,0,0,0.20);
-      --lp-td-border: rgba(0,0,0,0.15);
-      --lp-td-text: #1a1a1a;
-      --lp-info-label: rgba(0,0,0,0.04);
-      --lp-info-label-text: #333333;
-      --lp-stage-th-bg: linear-gradient(135deg, #333333, #1a1a1a);
-      --lp-stage-name: #333333;
-      --lp-stage-even: rgba(0,0,0,0.03);
-      --lp-goal-knowledge-bg: rgba(0,0,0,0.06);
-      --lp-goal-knowledge-text: #444444;
-      --lp-goal-ability-bg: rgba(0,0,0,0.06);
-      --lp-goal-ability-text: #444444;
-      --lp-goal-value-bg: rgba(0,0,0,0.06);
-      --lp-goal-value-text: #444444;
-      --record-hover: rgba(0,0,0,0.06);
-      --record-active: rgba(0,0,0,0.12);
-      --record-active-text: #1a1a1a;
-      --input-bg: #fafafa;
-      --input-border: rgba(0,0,0,0.18);
-      --input-focus-shadow: rgba(0,0,0,0.08);
-      --resizer-bg: rgba(0,0,0,0.18);
-      --resizer-hover: rgba(0,0,0,0.5);
-      --chapter-hover: rgba(0,0,0,0.05);
-      --chapter-active: rgba(0,0,0,0.10);
-      --chapter-active-text: #1a1a1a;
-      --ctx-menu-bg: #ffffff;
-      --ctx-menu-border: rgba(0,0,0,0.15);
-      --ctx-menu-shadow: rgba(0,0,0,0.12);
-      --ctx-menu-text: #1a1a1a;
-      --ctx-menu-hover: rgba(0,0,0,0.06);
-      --ctx-menu-hover-text: #1a1a1a;
-      --ctx-menu-danger-hover: rgba(0,0,0,0.08);
-      --ctx-menu-danger-text: #333333;
-      --dropdown-bg: #ffffff;
-      --dropdown-border: rgba(0,0,0,0.10);
-      --dropdown-shadow: rgba(0,0,0,0.08);
-      --caret-color: #333333;
-    }
-
-    /* ============ 主题下拉菜单 ============ */
-    #themeDropdown {
-      border-radius: 8px;
-      overflow: hidden;
-      animation: fadeIn 0.15s ease-out;
-      background: var(--dropdown-bg, #fff);
-      border: 1px solid var(--dropdown-border, rgba(46,125,110,0.12));
-      box-shadow: 0 8px 24px var(--dropdown-shadow, rgba(0,0,0,0.08));
-    }
-    .theme-option {
-      transition: background 0.1s;
-    }
-    .theme-option:hover {
-      background: var(--accent-light, rgba(46,125,110,0.08));
-    }
-
-    /* 全局光标颜色 */
-    input, textarea, select, [contenteditable] {
-      caret-color: var(--caret-color, #2e7d6e);
-    }
-  </style>
-</head>
-
-<body class="bg-paper text-ink h-screen overflow-hidden flex flex-col">
-
-<!-- ========== 顶部导航 ========== -->
-<header class="flex-shrink-0 bg-white/80 backdrop-blur-md border-b border-rule px-5 py-2.5 flex items-center justify-between" style="position: relative; z-index: 100;">
-  <div class="flex items-center gap-3">
-    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center text-white font-serif font-bold text-lg shadow-soft">
-      备
-    </div>
-    <div>
-      <h1 class="font-serif font-bold text-base text-ink leading-tight">备课助手 · 智能备课伴侣</h1>
-      <p class="text-[10px] text-muted leading-tight">遵循"宏观→微观"备课逻辑 · 六阶段教案 · 多模型可选</p>
-    </div>
-  </div>
-
-  <div class="flex items-center gap-3">
-    <div id="apiStatus" class="flex items-center gap-1.5 text-xs text-muted">
-      <span class="w-1.5 h-1.5 rounded-full bg-gray-400 breathing"></span>
-      <span>检查API中...</span>
-    </div>
-    <button id="togglePreview" class="btn-ghost px-3 py-1 rounded-md text-xs">显隐预览</button>
-    <div class="relative">
-      <button id="themeBtn" class="btn-ghost px-2.5 py-1 rounded-md text-xs flex items-center gap-1" title="界面风格">
-        <span id="themeIcon">🎨</span>
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-      </button>
-      <div id="themeDropdown" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-rule py-1 min-w-[140px] text-xs" style="z-index: 9999;">
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="light">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 border border-teal-200 inline-block flex-shrink-0"></span>
-          <span>青绿水墨</span>
-          <span class="ml-auto theme-check text-teal-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="warm">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 border border-amber-200 inline-block flex-shrink-0"></span>
-          <span>暖阳赭石</span>
-          <span class="ml-auto theme-check text-amber-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="paper">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-yellow-100 to-amber-200 border border-yellow-300 inline-block flex-shrink-0"></span>
-          <span>护眼米黄</span>
-          <span class="ml-auto theme-check text-amber-700 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ocean">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 border border-blue-200 inline-block flex-shrink-0"></span>
-          <span>静湖蓝调</span>
-          <span class="ml-auto theme-check text-blue-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ink">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-gray-600 to-gray-900 border border-gray-400 inline-block flex-shrink-0"></span>
-          <span>墨韵黑白</span>
-          <span class="ml-auto theme-check text-gray-600 hidden">✓</span>
-        </div>
-      </div>
-    </div>
-    <span id="modelBadge" class="text-xs text-muted">模型: <span class="text-teal-600 font-medium">未配置</span></span>
-    <button id="tutorialBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="新手教程">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <span>新手教程</span>
-    </button>
-    <button id="settingsBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="LLM 设置">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      <span>设置</span>
-    </button>
-  </div>
-</header>
-
-<!-- ========== 主体三栏 ========== -->
-<div class="flex-1 flex overflow-hidden">
-
-  <!-- ====== 左栏：课程 + 章节树 ====== -->
-  <aside id="leftPanel" class="flex-shrink-0 bg-white/60 backdrop-blur-sm flex flex-col" style="flex: 0 0 256px; min-width: 180px; max-width: 500px;">
-    <!-- 课程列表 -->
-    <div class="p-3 border-b border-rule">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">课程空间</h2>
-        <button id="newCourseBtn" class="text-teal-600 hover:bg-teal-50 rounded p-1" title="新建课程">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        </button>
-      </div>
-      <div id="courseList" class="space-y-1 max-h-40 overflow-y-auto">
-        <div class="text-xs text-muted text-center py-3">点击 + 创建课程</div>
-      </div>
-    </div>
-
-    <!-- 当前课程信息 + 章节树 -->
-    <div id="courseInfo" class="flex-1 flex flex-col overflow-hidden hidden">
-      <!-- 课程标题栏 -->
-      <div class="px-3 py-2 border-b border-rule">
-        <div class="text-[10px] text-muted mb-0.5">当前课程</div>
-        <div class="flex items-center justify-between gap-2">
-          <div id="currentCourseName" class="font-serif font-semibold text-sm text-ink truncate flex-1"></div>
-          <div class="relative flex gap-2 items-center flex-shrink-0">
-            <button id="smartExtractBtn" class="btn-ghost px-2 py-1 text-xs rounded flex items-center gap-1" title="一键提取知识点（选择教材）" disabled>
-              <span>📖</span><span>提知</span>
-            </button>
-            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5" title="新建章">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            </button>
-          </div>
-        </div>
-        <div id="currentCourseMeta" class="text-[11px] text-muted mt-0.5"></div>
-      </div>
-
-      <!-- 章节树 -->
-      <div class="flex-1 overflow-y-auto px-2 py-2" id="chapterTreeSection">
-        <div class="text-[10px] text-muted uppercase tracking-wider mb-1 px-1">章节结构</div>
-        <div id="chapterTree" class="chapter-tree">
-          <div class="text-xs text-muted text-center py-3">点击 + 新建第一章</div>
-        </div>
-      </div>
-
-      <!-- 垂直拖拽分隔条 -->
-      <div class="resizer-h" id="vResizer1"></div>
-
-      <!-- 下方区域整体包裹：当章节树区域高度固定时，此容器通过 flex-1 自然延伸填充剩余空间 -->
-      <div id="belowChapters" class="flex-1 flex flex-col min-h-0 overflow-hidden">
-
-        <!-- 教案记录 -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="lesson" id="lessonSection">
-          <div class="px-3 py-2 flex items-center justify-between">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
-            <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
-          </div>
-        </div>
-        <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
-
-        <!-- 垂直拖拽分隔条 -->
-        <div class="resizer-h flex-shrink-0" id="vResizer2"></div>
-
-        <!-- PPT记录 -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="ppt" id="pptSection">
-          <div class="px-3 py-2 flex items-center justify-between">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-            <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
-          </div>
-        </div>
-        <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
-
-        <!-- 垂直拖拽分隔条 -->
-        <div class="resizer-h flex-shrink-0" id="vResizer3"></div>
-
-        <!-- 教材资源（紧凑折叠区） -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0 flex-1 min-h-0 flex flex-col overflow-hidden" data-section="material" id="materialSection">
-          <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40 flex-shrink-0" id="materialHeader">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1 flex-1 min-h-0">
-            <div class="text-xs text-muted text-center py-2">请先选择课程</div>
-          </div>
-        </div>
-
-      </div>
-      <!-- /belowChapters 结束 -->
-    </div>
-  </aside>
-
-  <!-- 拖动分隔条 1 -->
-  <div id="resizer1" class="resizer"></div>
-
-  <!-- ====== 中栏：对话区 ====== -->
-  <main id="middlePanel" class="flex-shrink-0 flex flex-col bg-paper/40 min-w-0" style="flex: 1 1 400px; min-width: 300px;">
-    <!-- 章节输入条 -->
-    <div id="chapterBar" class="flex-shrink-0 bg-white/70 backdrop-blur-sm border-b border-rule px-4 py-2.5 flex items-center gap-3">
-      <div class="flex-1 flex items-center gap-2">
-        <label class="text-xs text-muted whitespace-nowrap">本次章节：</label>
-        <input id="chapterInput" type="text" placeholder="如：第三章 数据链路层 - CSMA/CD协议"
-               class="input-ink flex-1 px-3 py-1.5 rounded-md text-sm">
-      </div>
-      <button id="extractBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ① 提取知识点
-      </button>
-      <button id="lessonParamsBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap" title="教案参数配置">
-        ⚙ 参数
-      </button>
-      <button id="genLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ② 生成教案
-      </button>
-      <button id="genPptBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ③ 生成PPT
-      </button>
-    </div>
-
-    <!-- 教案参数面板（可折叠） -->
-    <div id="lessonParamsPanel" class="flex-shrink-0 bg-paper-2/60 border-b border-rule hidden">
-      <div class="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-        <div>
-          <label class="text-muted block mb-1">课时时长（分钟）</label>
-          <select id="paramTotalMinutes" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="30">30 分钟（短课）</option>
-            <option value="45">45 分钟（标准）</option>
-            <option value="60">60 分钟（双节）</option>
-            <option value="90" selected>90 分钟（大节）</option>
-            <option value="120">120 分钟（半天）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">导入方式</label>
-          <select id="paramIntroStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="auto" selected>智能匹配</option>
-            <option value="scenario">情境导入</option>
-            <option value="question">问题驱动</option>
-            <option value="case">案例分析</option>
-            <option value="review">温故知新</option>
-            <option value="media">多媒体</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">语言风格</label>
-          <select id="paramLanguageStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="plain" selected>通俗</option>
-            <option value="academic">学术</option>
-            <option value="humorous">幽默</option>
-            <option value="concise">简洁</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">案例密度</label>
-          <select id="paramCaseDensity" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="low">低（少而精）</option>
-            <option value="medium" selected>中（适量）</option>
-            <option value="high">高（密集巩固）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">互动频率</label>
-          <select id="paramInteractFreq" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="low">低</option>
-            <option value="medium" selected>中</option>
-            <option value="high">高（翻转课堂）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">难度定位</label>
-          <select id="paramDifficulty" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="lower">略低于学生水平</option>
-            <option value="match" selected>匹配学生水平</option>
-            <option value="higher">拔高拓展</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">作业分层</label>
-          <select id="paramHomeworkLayers" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="0">不分层</option>
-            <option value="2">两层（基础+提升）</option>
-            <option value="3" selected>三层（基础+提升+探究）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">板书设计</label>
-          <select id="paramBoardDesign" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="true" selected>生成</option>
-            <option value="false">不生成</option>
-          </select>
-        </div>
-        <div class="flex items-end gap-2">
-          <button id="resetParamsBtn" class="btn-ghost px-2 py-1 rounded text-xs">恢复默认</button>
-          <button id="closeParamsBtn" class="btn-ghost px-2 py-1 rounded text-xs">收起</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 知识点面板（可折叠） -->
-    <div id="knowledgePanel" class="flex-shrink-0 bg-teal-50/50 border-b border-teal-200 hidden max-h-56 overflow-y-auto">
-      <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-teal-50/95 backdrop-blur-sm">
-        <h3 class="text-xs font-semibold text-teal-700">📚 已提取知识点 <span id="kpCount" class="ml-1 text-teal-600"></span></h3>
-        <div class="flex items-center gap-2">
-          <button id="exportKpXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="按模板导出知识点到XLSX">📥 导出XLSX</button>
-          <button id="addKpBtn" class="text-teal-600 hover:bg-teal-100 rounded px-2 py-0.5 text-xs" title="手动新增知识点">+ 新增</button>
-          <button id="closeKp" class="text-teal-600 hover:text-teal-800 text-xs">×</button>
-        </div>
-      </div>
-      <div id="kpContainer" class="px-4 py-2 grid grid-cols-1 gap-1.5"></div>
-    </div>
-
-    <!-- 对话记录标签（按课程保留） -->
-    <div class="flex-shrink-0 px-4 py-1 bg-teal-50/60 border-b border-rule text-[10px] text-muted text-center">
-      💬 对话记录（按课程保留）
-    </div>
-
-    <!-- 对话消息流 -->
-    <div id="chatStream" class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-      <div id="tutorialGuideCard" class="hidden tutorial-card bg-white/90 rounded-xl border border-teal-200 shadow-soft p-4 fade-in">
-        <div class="font-serif font-semibold text-base text-teal-700 mb-2 flex items-center gap-2">
-          <span>🎉 8步上手备课助手</span>
-        </div>
-        <ol class="space-y-1.5 text-xs text-ink-2 leading-relaxed list-decimal pl-5">
-          <li>左栏「课程空间」→ 点击 + 新建课程</li>
-          <li>选择课程后，当前课程旁点「+」新建章</li>
-          <li>顶部「上传教材」时选择教材类型（课程标准/教科书/教参/练习题/论文/其他）</li>
-          <li>点当前课程旁「📖提知」按钮，勾选教材后一键提取知识点</li>
-          <li>选中章节后点「①提取知识点」完成章节知识映射</li>
-          <li>点「②生成教案」按钮，AI 按模板生成全表格教案</li>
-          <li>在中间对话框对教案提修改意见，微调内容</li>
-          <li>点「③生成PPT」导出课件</li>
-        </ol>
-        <div class="flex justify-end mt-3">
-          <button id="tutorialGuideCloseBtn" class="btn-primary px-3 py-1 rounded text-xs">知道了</button>
-        </div>
-      </div>
-      <div id="chatEmptyState" class="text-center text-xs text-muted py-6">
-        <div class="font-serif text-base text-teal-700 mb-1">备课助手 · 智能备课伴侣</div>
-        <div>遵循"宏观→微观"备课逻辑，按 ① 提取知识点 → ② 生成教案 → ③ 对话微调 顺序操作</div>
-      </div>
-    </div>
-
-    <!-- 输入区 -->
-    <div class="flex-shrink-0 bg-white/80 backdrop-blur-md border-t border-rule p-3">
-      <div class="flex items-end gap-2">
-        <div class="flex-1 relative">
-          <textarea id="chatInput" rows="2" placeholder="对教案提修改意见，如：把导入换成新闻案例 / 增加一个互动环节 / 缩短知识讲解到30分钟..."
-                    class="input-ink w-full px-3 py-2 rounded-lg text-sm resize-none"></textarea>
-        </div>
-        <button id="sendBtn" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-          发送
-        </button>
-      </div>
-      <div class="flex items-center justify-between mt-1.5 px-1">
-        <div class="text-[10px] text-muted">提示：⏎ 发送 / Shift+⏎ 换行</div>
-        <div class="flex gap-2">
-          <button id="exportMdBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 Markdown</button>
-          <button id="exportDocxBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 DOCX</button>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- 拖动分隔条 2 -->
-  <div id="resizer2" class="resizer"></div>
-
-  <!-- ====== 右栏：教案预览 ====== -->
-  <aside id="previewPanel" class="flex-shrink-0 bg-white/70 backdrop-blur-sm flex flex-col" style="flex: 0 0 420px; min-width: 260px; max-width: 800px;">
-    <div class="flex-shrink-0 px-3 py-2.5 border-b border-rule flex items-center justify-between gap-2">
-      <h2 class="text-xs font-semibold text-muted uppercase tracking-wider whitespace-nowrap">教案预览</h2>
-      <div class="flex items-center gap-1.5 min-w-0">
-        <span id="previewMeta" class="text-[11px] text-muted truncate"></span>
-        <button id="openTemplateLibraryBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="打开教案模板库">📝 模板库</button>
-        <button id="fullscreenPreviewBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="全屏预览/编辑教案">🔍 全屏</button>
-      </div>
-    </div>
-    <div id="previewContent" class="flex-1 overflow-y-auto px-4 py-3 lesson-preview text-sm">
-      <div class="text-center text-xs text-muted py-10">
-        <div class="font-serif text-base text-teal-700 mb-2">教案预览区</div>
-        <div>完成 ① 提取知识点 → ② 生成教案 后<br>这里会显示完整六阶段教案</div>
-      </div>
-    </div>
-  </aside>
-
-</div>
-
-<!-- ========== 模态框：新建课程 ========== -->
-<div id="courseModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 class="font-serif font-bold text-base mb-3 text-ink">新建课程</h3>
-    <div class="space-y-3">
-      <div>
-        <label class="text-xs text-muted block mb-1">课程名称 *</label>
-        <input id="newCourseName" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机网络">
-      </div>
-      <div>
-        <label class="text-xs text-muted block mb-1">所属专业</label>
-        <input id="newCourseMajor" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机科学与技术">
-      </div>
-      <div>
-        <label class="text-xs text-muted block mb-1">课程描述</label>
-        <textarea id="newCourseDesc" rows="2" class="input-ink w-full px-3 py-2 rounded-md text-sm resize-none" placeholder="可选"></textarea>
-      </div>
-    </div>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="cancelCourse" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmCourse" class="btn-primary px-3 py-1.5 rounded-md text-sm">创建</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 模态框：上传教材 ========== -->
-<div id="uploadModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
-    <h3 class="font-serif font-bold text-base mb-3 text-ink">上传教材资源</h3>
-    <div class="mb-3">
-      <div class="text-xs text-muted mb-2">📚 先选择教材类型（便于AI针对性识别）</div>
-      <div id="materialTypeRadioGroup" class="grid grid-cols-3 gap-2">
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="syllabus">
-          <span class="text-purple-700 font-medium">课程标准/大纲</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="textbook">
-          <span class="text-green-700 font-medium">教科书</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="reference">
-          <span class="text-blue-700 font-medium">教参教辅</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="exercise_book">
-          <span class="text-orange-700 font-medium">练习题册</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="paper">
-          <span class="text-pink-700 font-medium">学术论文</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="other" checked>
-          <span class="text-gray-700 font-medium">自动识别/其他</span>
-        </label>
-      </div>
-    </div>
-    <div id="dropZone" class="drop-zone border-2 border-dashed border-teal-300 rounded-lg p-6 text-center cursor-pointer hover:border-teal-500">
-      <svg class="w-10 h-10 mx-auto text-teal-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-      <div class="text-sm text-ink mb-1">点击选择文件或拖拽到此处</div>
-      <div class="text-xs text-muted">支持 PDF / Word(.docx) / TXT / Markdown</div>
-      <input id="fileInput" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md">
-    </div>
-    <div id="fileList" class="mt-3 space-y-1 max-h-32 overflow-y-auto"></div>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="cancelUpload" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmUpload" class="btn-primary px-3 py-1.5 rounded-md text-sm" disabled>开始上传</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 模态框：LLM 设置 ========== -->
-<div id="settingsModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[32rem] p-5 fade-in max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-serif font-bold text-base text-ink">LLM 大模型设置</h3>
-      <a id="settingsDocsLink" href="#" target="_blank" class="text-xs text-teal-600 hover:underline hidden">获取 API Key →</a>
-    </div>
-
-    <!-- 供应商选择 -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">服务供应商</label>
-      <select id="llmProvider" class="input-ink w-full px-3 py-2 rounded-md text-sm">
-        <!-- 动态填充 -->
-      </select>
-    </div>
-
-    <!-- API Key -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">
-        API Key
-        <span id="apiKeyStatus" class="ml-2 text-[10px]"></span>
-      </label>
-      <div class="relative">
-        <input id="llmApiKey" type="password" class="input-ink w-full px-3 py-2 pr-10 rounded-md text-sm" placeholder="sk-..." autocomplete="off">
-        <button id="toggleApiKeyVisibility" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink" title="显示/隐藏">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-        </button>
-      </div>
-      <p id="apiKeyHint" class="text-[10px] text-muted mt-1"></p>
-    </div>
-
-    <!-- Base URL -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">Base URL <span class="text-gray-400">(OpenAI 兼容接口地址)</span></label>
-      <input id="llmBaseUrl" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="https://...">
-    </div>
-
-    <!-- 模型 -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">模型名称</label>
-      <div class="flex gap-2">
-        <input id="llmModel" type="text" class="input-ink flex-1 px-3 py-2 rounded-md text-sm" placeholder="如 qwen-plus" list="llmModelList">
-        <datalist id="llmModelList"></datalist>
-      </div>
-    </div>
-
-    <!-- 高级参数 -->
-    <details class="mb-3">
-      <summary class="text-xs text-muted cursor-pointer hover:text-ink select-none">高级参数</summary>
-      <div class="mt-2 grid grid-cols-2 gap-2">
-        <div>
-          <label class="text-[10px] text-muted block mb-1">Temperature (0-2)</label>
-          <input id="llmTemperature" type="number" step="0.1" min="0" max="2" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="0.7">
-        </div>
-        <div>
-          <label class="text-[10px] text-muted block mb-1">Max Tokens</label>
-          <input id="llmMaxTokens" type="number" step="256" min="256" max="32768" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="4096">
-        </div>
-      </div>
-    </details>
-
-    <!-- 操作按钮 -->
-    <div class="flex justify-between gap-2 mt-4">
-      <button id="testLlmBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        测试连接
-      </button>
-      <div class="flex gap-2">
-        <button id="cancelSettings" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-        <button id="saveSettings" class="btn-primary px-3 py-1.5 rounded-md text-sm">保存设置</button>
-      </div>
-    </div>
-
-    <!-- 测试结果显示 -->
-    <div id="testResult" class="hidden mt-3 px-3 py-2 rounded-md text-xs"></div>
-
-    <!-- 提示信息 -->
-    <div class="mt-3 pt-3 border-t border-rule text-[10px] text-muted leading-relaxed">
-      <div class="mb-1">📌 提示：</div>
-      <div>· API Key 仅存储在本地服务器，不会上传到任何第三方</div>
-      <div>· 若 API Key 显示为 <code class="bg-paper px-1 rounded">sk-x****xxxx</code> 格式，提交时将保留原值</div>
-      <div>· 切换供应商会自动填充预设的 Base URL 和默认模型</div>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 模态框：思维导图 ========== -->
-<div id="mindmapModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[80vw] h-[85vh] p-5 fade-in flex flex-col">
-    <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <h3 class="font-serif font-bold text-base text-ink">🧠 思维导图</h3>
-      <div class="flex items-center gap-2">
-        <span id="mindmapCount" class="text-xs text-muted"></span>
-        <button id="mindmapRefreshBtn" class="btn-ghost px-2 py-1 rounded text-xs" title="刷新">🔄 刷新</button>
-        <button id="mindmapClose" class="btn-ghost px-2 py-1 rounded text-xs">✕ 关闭</button>
-      </div>
-    </div>
-    <div class="flex-1 min-h-0 rounded-lg border border-rule bg-white relative overflow-hidden">
-      <svg id="mindmapSvg" class="w-full h-full"></svg>
-    </div>
-    <div class="flex-shrink-0 mt-2 text-[10px] text-muted flex items-center gap-4">
-      <span>🖱 滚轮缩放 · 拖拽平移</span>
-      <span>🔄 双击节点展开/折叠</span>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 模态框：PPT导出设置 ========== -->
-<div id="pptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[520px] max-h-[90vh] p-5 fade-in overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-serif font-bold text-base text-ink">📊 PPT 生成设置</h3>
-      <button id="pptClose" class="btn-ghost px-2 py-1 rounded text-xs">✕ 关闭</button>
-    </div>
-
-    <!-- 视觉风格 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">视觉风格</label>
-      <div class="grid grid-cols-5 gap-2" id="pptStyleGroup">
-        <label class="ppt-style-option cursor-pointer text-center" data-value="academic">
-          <input type="radio" name="pptStyle" value="academic" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1A56DB,#D6E4FD)"></div>
-            <span class="text-[10px] text-ink-2">学术简约</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="cyan_ink">
-          <input type="radio" name="pptStyle" value="cyan_ink" class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#2E7D6E,#D9EBE6)"></div>
-            <span class="text-[10px] text-ink-2">青绿水墨</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="cute_cartoon">
-          <input type="radio" name="pptStyle" value="cute_cartoon" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#E86B8A,#FDE0E8)"></div>
-            <span class="text-[10px] text-ink-2">清新卡通</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="formal">
-          <input type="radio" name="pptStyle" value="formal" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1E293B,#D4D8DE)"></div>
-            <span class="text-[10px] text-ink-2">商务正式</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="minimal">
-          <input type="radio" name="pptStyle" value="minimal" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#333,#E0E0E0)"></div>
-            <span class="text-[10px] text-ink-2">极简黑白</span>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <!-- 内容密度 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">内容密度</label>
-      <div class="flex gap-2" id="pptDensityGroup">
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="detailed">
-          <input type="radio" name="pptDensity" value="detailed" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">详细</span>
-            <span class="text-[10px] text-muted block">每页3-5个要点</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="moderate">
-          <input type="radio" name="pptDensity" value="moderate" checked class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">适中</span>
-            <span class="text-[10px] text-muted block">每页2-3个要点</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="concise">
-          <input type="radio" name="pptDensity" value="concise" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">精简</span>
-            <span class="text-[10px] text-muted block">每页1-2个要点</span>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <!-- 视觉元素 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">视觉元素</label>
-      <div class="flex gap-2" id="pptImageGroup">
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="none">
-          <input type="radio" name="pptImage" value="none" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">纯文字</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="icons">
-          <input type="radio" name="pptImage" value="icons" checked class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">图标装饰</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="rich">
-          <input type="radio" name="pptImage" value="rich" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">丰富布局</span>
-          </div>
-        </label>
-      </div>
-    </div>
-
-    <!-- 自定义风格描述 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">自定义风格描述（可选）</label>
-      <textarea id="pptStyleCustom" class="input-ink w-full px-3 py-2 rounded-md text-xs" rows="2" placeholder="例如：使用暖色调，多放图片，字体大一些..."></textarea>
-    </div>
-
-    <div class="flex justify-end gap-2 pt-2 border-t border-rule">
-      <span id="pptStatus" class="text-xs text-muted self-center hidden">生成中，请稍候...</span>
-      <button id="pptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="pptGenerateBtn" class="btn-primary px-4 py-1.5 rounded-md text-sm">生成并导出</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 通用模态框：输入(prompt 替代) ========== -->
-<div id="promptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 id="promptTitle" class="font-serif font-bold text-base mb-3 text-ink">请输入</h3>
-    <input id="promptInput" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="">
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="promptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="promptOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== 通用模态框：确认(confirm 替代) ========== -->
-<div id="confirmModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 id="confirmTitle" class="font-serif font-bold text-base mb-3 text-ink">确认操作</h3>
-    <p id="confirmMessage" class="text-sm text-ink-2 whitespace-pre-line leading-relaxed mb-1"></p>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="confirmCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确认</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== F1: 教案全屏编辑/预览模态框 ========== -->
-<div id="fullscreenLessonModal" class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-[90] hidden items-center justify-center">
-  <div class="bg-paper rounded-xl shadow-md-soft w-[95vw] max-w-[1200px] h-[90vh] flex flex-col fade-in overflow-hidden">
-    <!-- Header -->
-    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
-      <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
-        📄 教案全屏编辑
-        <span id="fullscreenLessonSubtitle" class="text-xs text-muted font-normal ml-2"></span>
-      </h3>
-      <div class="flex items-center gap-1.5">
-        <button id="toggleEditBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="切换编辑/预览模式">
-          <span class="edit-icon">✏️</span>
-          <span class="edit-label">编辑</span>
-        </button>
-        <button id="saveLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm" title="保存修改">💾 保存</button>
-        <button id="closeFullscreenBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭">✕ 关闭</button>
-      </div>
-    </div>
-    <!-- Dirty 提示条 -->
-    <div id="fullscreenDirtyBar" class="hidden flex-shrink-0 px-4 py-1 bg-amber-100 text-amber-700 text-[11px] text-center border-b border-amber-300">
-      ⚠ 有未保存的修改，请点击"保存"以保留
-    </div>
-    <!-- Body -->
-    <div id="fullscreenLessonBody" class="flex-1 overflow-y-auto px-6 py-4 lesson-preview text-sm bg-white">
-      <!-- 由 openFullscreenLesson() 动态渲染 -->
-    </div>
-  </div>
-</div>
-
-<!-- ========== Toast 提示 ========== -->
-<div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] hidden">
-  <div id="toastBody" class="bg-ink/90 text-white text-sm px-4 py-2 rounded-lg shadow-md-soft"></div>
-</div>
-
-<!-- ========== G1: 新手教程模态框 ========== -->
-<div id="tutorialModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[42rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3">
-      <h3 class="font-serif font-bold text-base text-ink">📖 备课助手 · 详细使用教程</h3>
-      <button class="tutorial-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="modal-body space-y-4 text-xs text-ink-2 leading-relaxed">
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">1. 新建课程空间</h4>
-        <p><b class="text-ink">前置条件：</b>打开应用首页。</p>
-        <p><b class="text-ink">操作：</b>在左栏「课程空间」标题右侧点击 + 按钮，输入课程名、专业、描述，点击"创建"。</p>
-        <p><b class="text-ink">预期：</b>列表中出现新课程并自动高亮，下方章节树、教材区激活。</p>
-        <p><b class="text-ink">常见错误：</b>课程名为空 → 无法创建；点击列表不生效 → 先关闭上下文菜单。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">2. +新建章，搭建章节结构</h4>
-        <p><b class="text-ink">前置条件：</b>已有当前课程被选中。</p>
-        <p><b class="text-ink">操作：</b>当前课程标题栏右侧点击「+」按钮，或在章节树节点菜单里选择"新增子节/重命名/删除"。</p>
-        <p><b class="text-ink">预期：</b>章节树出现新建章/节，支持多层级折叠展开。</p>
-        <p><b class="text-ink">常见错误：</b>选中某章后点击+仍建在根 → 注意按钮上下文是课程级"新建章"。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">3. 上传教材并预选类型</h4>
-        <p><b class="text-ink">前置条件：</b>当前课程已激活。</p>
-        <p><b class="text-ink">操作：</b>左下"教材资源"区点击↑按钮 → 先选择教材类型（6 类 + 自动识别）→ 拖放或点选文件 → 开始上传。</p>
-        <p><b class="text-ink">预期：</b>教材列表中出现对应文件，并显示彩色类型 badge / 大小 / 字数。</p>
-        <p><b class="text-ink">常见错误：</b>文件过大或扫描版PDF导致解析失败 → 转 DOCX / OCR 后重传。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">4. 一键提取知识点 & 联网校验准确性</h4>
-        <p><b class="text-ink">前置条件：</b>课程下已上传教材。</p>
-        <p><b class="text-ink">操作：</b>当前课程标题栏点击「📖提知」→ 勾选要提取的教材（可多选）→ 确定 → 等待进度完成。</p>
-        <p><b class="text-ink">预期：</b>toast 提示新增知识点数，可在弹窗选择"立即导出XLSX"。</p>
-        <p><b class="text-ink">常见错误：</b>返回空 → 请检查教材为文字版且不要一次性选择过多。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">5. 章节条①：章节级提取知识点</h4>
-        <p><b class="text-ink">前置条件：</b>已新建章节或填入章节名。</p>
-        <p><b class="text-ink">操作：</b>在中间章节输入条填写章节 → 点击"① 提取知识点"。</p>
-        <p><b class="text-ink">预期：</b>知识点面板展开，可手动改层级/重点/难点/考点。</p>
-        <p><b class="text-ink">常见错误：</b>章节名为空 → 提示先填写章节。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">6. 章节条②：选择模板并生成教案</h4>
-        <p><b class="text-ink">前置条件：</b>知识点面板至少有 1 个知识点。</p>
-        <p><b class="text-ink">操作：</b>点击"⚙ 参数"配置课时/风格/作业分层等 → 点击"② 生成教案"。（可在模板库中维护默认模板 JSON）</p>
-        <p><b class="text-ink">预期：</b>右侧预览区出现全表格化六阶段教案，教案记录列表同步增加。</p>
-        <p><b class="text-ink">常见错误：</b>结构不完整 → 使用失败对话框的"模板填充"或"降参重试"补救。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">7. 中间对话框③：对话微调教案细节</h4>
-        <p><b class="text-ink">前置条件：</b>已生成一份教案。</p>
-        <p><b class="text-ink">操作：</b>在底部对话框输入修改意见，如"导入换案例、缩短讲解到30分钟、增加互动"，回车发送。</p>
-        <p><b class="text-ink">预期：</b>AI 回显调整并刷新右栏教案预览；可导出 MD/DOCX。</p>
-        <p><b class="text-ink">常见错误：</b>发送按钮禁用 → 必须先有 currentLessonId（成功生成过教案）。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">8. 生成PPT并导出</h4>
-        <p><b class="text-ink">前置条件：</b>当前存在已生成教案。</p>
-        <p><b class="text-ink">操作：</b>点击"③ 生成PPT" → 选择风格/密度/配图方式 → 生成并导出。</p>
-        <p><b class="text-ink">预期：</b>浏览器自动下载 .pptx，左下 PPT 记录列表新增一项。</p>
-        <p><b class="text-ink">常见错误：</b>打开显示空白 → 升级 PowerPoint/WPS 或降低密度重生成。</p>
-      </section>
-
-      <div class="bg-ochre/5 border border-ochre/20 rounded-lg p-3">
-        <h4 class="font-semibold text-ochre mb-2">❓ Q&A 常见问题</h4>
-        <div class="space-y-2">
-          <div><b class="text-ink">Q1: LLM未配置或报错怎么办？</b><br>A. 点右上角「设置」→ 填入 APIKey + BaseURL + Model → 点"测试连接"确认通过后再操作。</div>
-          <div><b class="text-ink">Q2: 教材解析失败（空/乱码）怎么办？</b><br>A. 先转 PDF 或另存为 DOCX；扫描件需先 OCR；若仍失败请联系管理员并带上文件名。</div>
-          <div><b class="text-ink">Q3: 一键提取知识点返回空？</b><br>A. 检查教材是否为文字版（非扫描图片）；或减少一次性勾选的教材数量后重跑。</div>
-          <div><b class="text-ink">Q4: 教案生成失败或结构不完整？</b><br>A. 在失败对话框选择"重试"或"降参重试"；或点"用模板快速填充"兜底。</div>
-          <div><b class="text-ink">Q5: PPT文件打开显示空白或加载失败？</b><br>A. 安装高版本 PowerPoint 或 WPS；或在 PPT 导出设置中切换到 Less 密度导出。</div>
-          <div><b class="text-ink">Q6: 上传PPT显示加载失败？</b><br>A. 检查扩展名为 .pptx 且文件 < 50MB；或选择"重新生成"下载新的副本。</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
-      <button class="tutorial-close btn-primary px-3 py-1.5 rounded-md text-sm">关闭</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== G2: 选择教材资源模态框 ========== -->
-<div id="extractMaterialsModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[30rem] max-h-[82vh] overflow-hidden flex flex-col p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3 flex-shrink-0">
-      <h3 class="font-serif font-bold text-base text-ink">选择教材资源（可多选）用于一键提取知识点</h3>
-      <button class="modal-em-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="modal-body flex-1 overflow-y-auto border border-rule rounded-md p-2">
-      <div id="materialsCheckList" class="space-y-1 text-xs">
-        <div class="text-center text-muted py-4">当前课程暂无教材，请先上传</div>
-      </div>
-      <div id="extractProgress" class="hidden mt-3">
-        <div class="flex items-center gap-2 text-teal-700 text-xs mb-1">
-          <span class="inline-block w-3 h-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></span>
-          <span id="extractProgressText">联网校验中 ...</span>
-        </div>
-        <div class="w-full h-1.5 bg-teal-100 rounded-full overflow-hidden">
-          <div id="extractProgressBar" class="h-full bg-teal-500 transition-all" style="width: 12%"></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-between gap-2 mt-4 flex-shrink-0">
-      <div class="flex gap-2">
-        <button id="selAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">全选</button>
-        <button id="unselAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">取消全选</button>
-      </div>
-      <div class="flex gap-2">
-        <button id="closeExtractMatBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-        <button id="confirmExtractMatBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ========== G3: 教案模板库管理模态框 ========== -->
-<div id="templateLibraryModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[50rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3">
-      <h3 class="font-serif font-bold text-base text-ink">📑 教案模板库</h3>
-      <button class="tpl-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="text-[10px] text-muted mb-3 bg-teal-50 border border-teal-200 rounded-lg p-2 leading-relaxed flex items-start justify-between gap-2">
-      <div class="flex-1">
-        💡 模板是教案的"骨架"——它定义了教案包含哪些内容（如教学目标、教学过程等）。
-        您可以直接 <strong>下载任意模板为 Word 文档</strong>，在 Word 中编辑后 <strong>上传</strong> 回来，系统会自动识别您的内容结构。
-      </div>
-      <a href="/api/lesson-templates/default/download" target="_blank" class="flex-shrink-0 btn-primary px-2 py-1 rounded text-[11px] whitespace-nowrap">⬇ 下载默认Word模板</a>
-    </div>
-    <div class="modal-body grid grid-cols-2 gap-3 text-xs">
-      <!-- 左栏：模板列表 -->
-      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
-        <div class="flex gap-2 flex-wrap">
-          <button id="newTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">+ 新建模板</button>
-          <button id="uploadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬆ 上传Word文档</button>
-          <input id="uploadTplInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden">
-        </div>
-        <div id="tplListGroup" class="list-group space-y-1 overflow-y-auto max-h-[64vh] pr-1">
-          <div class="text-center text-muted py-6">暂无模板，点击"+新建模板"</div>
-        </div>
-      </div>
-      <!-- 右栏：模板信息 -->
-      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
-        <div class="text-[11px] text-muted">当前模板：<span id="activeTplName" class="text-teal-700 font-medium">未选择</span></div>
-        <div id="tplInfoCard" class="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-3 text-[11px] leading-relaxed">
-          <div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>
-        </div>
-        <div class="flex justify-end gap-2 mt-1">
-          <button id="downloadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬇ 下载Word文档</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
-      <button class="tpl-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
-    </div>
-  </div>
-</div>
-
-<!-- ========== G4: 操作失败对话框 ========== -->
-<div id="failureModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)closeOperationFailure()">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
-        <span class="text-2xl">⚠</span>
-        <h3 class="font-serif font-bold text-base text-ochre">操作失败</h3>
-      </div>
-      <button onclick="closeOperationFailure()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
-    </div>
-    <div class="modal-body mb-3">
-      <div id="failureMessage" class="text-sm text-ink-2 leading-relaxed mb-2"></div>
-      <div id="failureSolution" class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2"></div>
-      <div id="failureCode" class="text-[10px] text-muted font-mono break-all"></div>
-    </div>
-    <div class="modal-footer flex flex-wrap gap-2">
-      <button id="failRetryBtn" class="btn-primary px-2.5 py-1.5 rounded-md text-xs">重试</button>
-      <button id="failLowerBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">降参重试</button>
-      <button id="failTplBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">用模板快速填充</button>
-      <button id="failDraftBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">保存当前草稿</button>
-      <button id="failHelpBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">打开帮助</button>
-      <button id="failExitBtn" onclick="closeOperationFailure()" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 hover:bg-red-50">退出</button>
-    </div>
-  </div>
-</div>
-
-<script>
 // ==================== 状态管理 ====================
 const state = {
   currentCourseId: null,
   currentCourseName: '',
+  currentCourseMajor: '',
+  currentCourseDesc: '',
+  currentCourseSubject: '',  // 当前课程的学科标识(影响AI生成)
   currentLessonId: null,
   currentChapter: '',
   currentChapterId: null,  // 选中的章节树节点 ID
@@ -1799,6 +16,140 @@ const state = {
   templates: [],           // 教案模板库缓存
   lastFailureCtx: null,    // 最近失败上下文（H1）
 };
+
+// 学科标识 -> 中文名映射(与后端 prompt_loader._SUBJECT_CN_MAP 对齐)
+const SUBJECT_CN_MAP = {
+  math: '数学', chinese: '语文', english: '英语', physics: '物理',
+  chemistry: '化学', biology: '生物', history: '历史', geography: '地理',
+  politics: '政治', it: '信息技术',
+  // 理学
+  applied_math: '应用数学', statistics: '统计学', psychology: '心理学', ecology: '生态学',
+  // 工学
+  cs: '计算机科学与技术', software_eng: '软件工程', ai: '人工智能', data_science: '数据科学',
+  electronic_info: '电子信息工程', communication: '通信工程', automation: '自动化',
+  mechanical: '机械工程', civil_eng: '土木工程', architecture: '建筑学',
+  materials_sci: '材料科学与工程', electrical_eng: '电气工程', environmental_eng: '环境工程',
+  biomedical_eng: '生物医学工程', cybersecurity: '网络安全',
+  // 医学
+  clinical_med: '临床医学', basic_med: '基础医学', pharmacy: '药学', nursing: '护理学',
+  stomatology: '口腔医学', tcm: '中医学', public_health: '公共卫生',
+  // 法学
+  law: '法学', sociology: '社会学', political_sci: '政治学与行政学',
+  // 经济学
+  economics: '经济学', finance: '金融学', fiscal: '财政学', intl_trade: '国际经济与贸易', insurance: '保险学',
+  // 管理学
+  business_admin: '工商管理', accounting: '会计学', financial_mgmt: '财务管理', marketing: '市场营销',
+  public_admin: '公共管理', info_mgmt: '信息管理与信息系统', ecommerce: '电子商务', logistics: '物流管理',
+  // 文学
+  chinese_lit: '中国语言文学', foreign_lit: '外国语言文学', journalism: '新闻传播学', advertising: '广告学', japanese: '日语',
+  // 教育学
+  education: '教育学', preschool_edu: '学前教育', edtech: '教育技术学', pe: '体育教育',
+  // 艺术学
+  art_design: '艺术设计', music: '音乐学', fine_arts: '美术学', dance: '舞蹈学', digital_media: '数字媒体艺术',
+  // 农学
+  agriculture: '农学', forestry: '林学', horticulture: '园艺学', animal_sci: '动物科学',
+  // 历史学
+  archaeology: '考古学', museology: '文物与博物馆学',
+  // 哲学
+  philosophy: '哲学', logic: '逻辑学',
+  default: '通用', other: '其他',
+};
+
+// 学科分类分组（用于下拉框分组展示）
+const SUBJECT_GROUPS = [
+  {
+    label: '中小学', items: [
+      { value: 'chinese', label: '语文' }, { value: 'math', label: '数学' },
+      { value: 'english', label: '英语' }, { value: 'physics', label: '物理' },
+      { value: 'chemistry', label: '化学' }, { value: 'biology', label: '生物' },
+      { value: 'history', label: '历史' }, { value: 'geography', label: '地理' },
+      { value: 'politics', label: '政治' }, { value: 'it', label: '信息技术' },
+    ]
+  },
+  {
+    label: '理学', items: [
+      { value: 'applied_math', label: '应用数学' }, { value: 'statistics', label: '统计学' },
+      { value: 'psychology', label: '心理学' }, { value: 'ecology', label: '生态学' },
+    ]
+  },
+  {
+    label: '工学', items: [
+      { value: 'cs', label: '计算机科学与技术' }, { value: 'software_eng', label: '软件工程' },
+      { value: 'ai', label: '人工智能' }, { value: 'data_science', label: '数据科学' },
+      { value: 'electronic_info', label: '电子信息工程' }, { value: 'communication', label: '通信工程' },
+      { value: 'automation', label: '自动化' }, { value: 'mechanical', label: '机械工程' },
+      { value: 'civil_eng', label: '土木工程' }, { value: 'architecture', label: '建筑学' },
+      { value: 'materials_sci', label: '材料科学与工程' }, { value: 'electrical_eng', label: '电气工程' },
+      { value: 'environmental_eng', label: '环境工程' }, { value: 'biomedical_eng', label: '生物医学工程' },
+      { value: 'cybersecurity', label: '网络安全' },
+    ]
+  },
+  {
+    label: '医学', items: [
+      { value: 'clinical_med', label: '临床医学' }, { value: 'basic_med', label: '基础医学' },
+      { value: 'pharmacy', label: '药学' }, { value: 'nursing', label: '护理学' },
+      { value: 'stomatology', label: '口腔医学' }, { value: 'tcm', label: '中医学' },
+      { value: 'public_health', label: '公共卫生' },
+    ]
+  },
+  {
+    label: '法学', items: [
+      { value: 'law', label: '法学' }, { value: 'sociology', label: '社会学' },
+      { value: 'political_sci', label: '政治学与行政学' },
+    ]
+  },
+  {
+    label: '经济学', items: [
+      { value: 'economics', label: '经济学' }, { value: 'finance', label: '金融学' },
+      { value: 'fiscal', label: '财政学' }, { value: 'intl_trade', label: '国际经济与贸易' },
+      { value: 'insurance', label: '保险学' },
+    ]
+  },
+  {
+    label: '管理学', items: [
+      { value: 'business_admin', label: '工商管理' }, { value: 'accounting', label: '会计学' },
+      { value: 'financial_mgmt', label: '财务管理' }, { value: 'marketing', label: '市场营销' },
+      { value: 'public_admin', label: '公共管理' }, { value: 'info_mgmt', label: '信息管理与信息系统' },
+      { value: 'ecommerce', label: '电子商务' }, { value: 'logistics', label: '物流管理' },
+    ]
+  },
+  {
+    label: '文学', items: [
+      { value: 'chinese_lit', label: '中国语言文学' }, { value: 'foreign_lit', label: '外国语言文学' },
+      { value: 'journalism', label: '新闻传播学' }, { value: 'advertising', label: '广告学' },
+      { value: 'japanese', label: '日语' },
+    ]
+  },
+  {
+    label: '教育学', items: [
+      { value: 'education', label: '教育学' }, { value: 'preschool_edu', label: '学前教育' },
+      { value: 'edtech', label: '教育技术学' }, { value: 'pe', label: '体育教育' },
+    ]
+  },
+  {
+    label: '艺术学', items: [
+      { value: 'art_design', label: '艺术设计' }, { value: 'music', label: '音乐学' },
+      { value: 'fine_arts', label: '美术学' }, { value: 'dance', label: '舞蹈学' },
+      { value: 'digital_media', label: '数字媒体艺术' },
+    ]
+  },
+  {
+    label: '农学', items: [
+      { value: 'agriculture', label: '农学' }, { value: 'forestry', label: '林学' },
+      { value: 'horticulture', label: '园艺学' }, { value: 'animal_sci', label: '动物科学' },
+    ]
+  },
+  {
+    label: '历史学', items: [
+      { value: 'archaeology', label: '考古学' }, { value: 'museology', label: '文物与博物馆学' },
+    ]
+  },
+  {
+    label: '哲学', items: [
+      { value: 'philosophy', label: '哲学' }, { value: 'logic', label: '逻辑学' },
+    ]
+  },
+];
 
 // ==================== 工具函数 ====================
 async function api(url, options = {}) {
@@ -1869,6 +220,72 @@ function showConfirm(title, message) {
     };
     document.getElementById('confirmOk').onclick = () => { cleanup(); resolve(true); };
     document.getElementById('confirmCancel').onclick = () => { cleanup(); resolve(false); };
+  });
+}
+
+// 学科选择框（下拉选择代替手动输入，含大学学科分类）
+function showSubjectPicker(currentValue) {
+  return new Promise(resolve => {
+    const modal = document.getElementById('subjectPickerModal');
+    const select = document.getElementById('subjectPickerSelect');
+    select.innerHTML = '';
+
+    // 通用选项
+    const optGeneral = document.createElement('option');
+    optGeneral.value = ''; optGeneral.textContent = '通用（不指定学科）';
+    select.appendChild(optGeneral);
+
+    // 按分组渲染
+    SUBJECT_GROUPS.forEach(group => {
+      const optg = document.createElement('optgroup');
+      optg.label = group.label;
+      group.items.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.value; opt.textContent = item.label;
+        optg.appendChild(opt);
+      });
+      select.appendChild(optg);
+    });
+
+    // 其他
+    const optOther = document.createElement('option');
+    optOther.value = 'other'; optOther.textContent = '其他';
+    select.appendChild(optOther);
+
+    // 预选当前值
+    if (currentValue) {
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === currentValue) {
+          select.selectedIndex = i; break;
+        }
+      }
+      // 滚动到选中项
+      setTimeout(() => {
+        const idx = select.selectedIndex;
+        if (idx >= 0) select.options[idx].scrollIntoView({ block: 'center' });
+      }, 50);
+    }
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    setTimeout(() => select.focus(), 50);
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      document.getElementById('subjectPickerOk').onclick = null;
+      document.getElementById('subjectPickerCancel').onclick = null;
+      select.onkeydown = null;
+    };
+    const ok = () => { const v = select.value; cleanup(); resolve(v); };
+    const cancel = () => { cleanup(); resolve(undefined); };
+    select.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); ok(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    };
+    select.ondblclick = (e) => { e.preventDefault(); ok(); };
+    document.getElementById('subjectPickerOk').onclick = ok;
+    document.getElementById('subjectPickerCancel').onclick = cancel;
   });
 }
 
@@ -2081,7 +498,7 @@ async function loadCourses() {
     }
     list.innerHTML = data.data.map(c => `
       <div class="course-item p-2 rounded-md cursor-pointer hover:bg-teal-50 ${c.id === state.currentCourseId ? 'bg-teal-100 border-l-2 border-teal-500' : ''}"
-           data-id="${c.id}" data-name="${escapeHtml(c.name)}">
+           data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-major="${escapeHtml(c.major || '')}" data-description="${escapeHtml(c.description || '')}" data-subject="${escapeHtml(c.subject || '')}">
         <div class="flex items-center justify-between">
           <div class="text-sm font-medium text-ink truncate flex-1">${escapeHtml(c.name)}</div>
           <button class="course-menu-btn text-muted hover:text-ochre p-0.5" data-course-id="${c.id}" title="更多">
@@ -2089,12 +506,13 @@ async function loadCourses() {
           </button>
         </div>
         ${c.major ? `<div class="text-[10px] text-muted truncate">${escapeHtml(c.major)}</div>` : ''}
+        ${c.subject ? `<div class="text-[10px] text-teal-600 truncate">📖 ${escapeHtml(SUBJECT_CN_MAP[c.subject] || c.subject)}</div>` : ''}
       </div>
     `).join('');
     list.querySelectorAll('.course-item').forEach(el => {
       el.onclick = (e) => {
-        if (e.target.closest('.course-menu-btn')) return; // 避免点菜单触发选课
-        selectCourse(parseInt(el.dataset.id), el.dataset.name);
+        if (e.target.closest('.course-menu-btn')) return;
+        selectCourse(parseInt(el.dataset.id), el.dataset.name, el.dataset.major, el.dataset.description, el.dataset.subject);
       };
     });
     list.querySelectorAll('.course-menu-btn').forEach(btn => {
@@ -2110,15 +528,25 @@ async function loadCourses() {
   }
 }
 
-async function selectCourse(id, name) {
+async function selectCourse(id, name, major, description, subject) {
   state.currentCourseId = id;
   state.currentCourseName = name;
+  state.currentCourseMajor = major || '';
+  state.currentCourseDesc = description || '';
+  state.currentCourseSubject = subject || '';
   state.currentLessonId = null;
   state.currentChapterId = null;
   state.knowledgePoints = [];
 
   document.getElementById('currentCourseName').textContent = name;
   document.getElementById('courseInfo').classList.remove('hidden');
+  // 更新课程元信息
+  const metaEl = document.getElementById('currentCourseMeta');
+  const parts = [];
+  if (major) parts.push(`专业：${major}`);
+  if (subject) parts.push(`学科：${SUBJECT_CN_MAP[subject] || subject}`);
+  if (description) parts.push(description);
+  metaEl.textContent = parts.join(' | ');
   document.getElementById('uploadBtn').disabled = false;
   document.getElementById('uploadLessonBtn').disabled = false;
   document.getElementById('uploadPptBtn').disabled = false;
@@ -2130,6 +558,7 @@ async function selectCourse(id, name) {
   document.getElementById('exportMdBtn').disabled = true;
   document.getElementById('exportDocxBtn').disabled = true;
   document.getElementById('genPptBtn').disabled = true;
+  document.getElementById('evaluateLessonBtn').disabled = true;
   document.getElementById('chapterInput').value = '';
 
   document.getElementById('previewContent').innerHTML = `
@@ -2150,11 +579,12 @@ async function createCourse() {
   const name = document.getElementById('newCourseName').value.trim();
   const major = document.getElementById('newCourseMajor').value.trim();
   const desc = document.getElementById('newCourseDesc').value.trim();
+  const subject = document.getElementById('newCourseSubject').value;
   if (!name) { toast('请输入课程名称'); return; }
   try {
     await api('/api/courses', {
       method: 'POST',
-      body: JSON.stringify({ name, major: major || null, description: desc || null }),
+      body: JSON.stringify({ name, major: major || null, description: desc || null, subject: subject || '' }),
     });
     toast('课程创建成功');
     document.getElementById('courseModal').classList.add('hidden');
@@ -2162,6 +592,7 @@ async function createCourse() {
     document.getElementById('newCourseName').value = '';
     document.getElementById('newCourseMajor').value = '';
     document.getElementById('newCourseDesc').value = '';
+    document.getElementById('newCourseSubject').value = '';
     await loadCourses();
   } catch (e) {
     toast('创建失败: ' + e.message);
@@ -2323,11 +754,32 @@ function renderLessonList(lessons) {
       <svg class="lesson-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
       <span class="lesson-name">${escapeHtml(l.title || l.chapter)}</span>
       <span class="lesson-date">${l.created_at ? formatDate(l.created_at) : ''}</span>
+      <button class="del-lesson text-red-400 hover:text-red-600 text-xs ml-auto flex-shrink-0" data-id="${l.id}" title="删除教案">×</button>
     </div>
   `).join('');
   list.querySelectorAll('.lesson-item').forEach(item => {
-    item.onclick = () => {
+    item.onclick = (e) => {
+      if (e.target.closest('.del-lesson')) return;
       selectLesson(parseInt(item.dataset.id), item.dataset.title);
+    };
+  });
+  list.querySelectorAll('.del-lesson').forEach(b => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      if (!(await showConfirm('删除教案', '确认删除此教案？'))) return;
+      try {
+        await api(`/api/lessons/${b.dataset.id}`, { method: 'DELETE' });
+        toast('教案已删除');
+        if (state.currentLessonId === parseInt(b.dataset.id)) {
+          state.currentLessonId = null;
+          document.getElementById('lessonPreview').classList.add('hidden');
+        }
+        const courseId = state.currentCourseId;
+        if (courseId) {
+          const data = await api(`/api/courses/${courseId}/lessons`);
+          renderLessonList(data.data || []);
+        }
+      } catch (e) { toast('删除失败: ' + e.message); }
     };
   });
 }
@@ -2344,10 +796,11 @@ async function selectLesson(lessonId, title) {
       renderLessonPreview(data.data.plan);
       document.getElementById('previewMeta').textContent = data.data.plan.total_minutes ? `${data.data.plan.total_minutes} 分钟` : '';
       document.getElementById('sendBtn').disabled = false;
-      document.getElementById('exportMdBtn').disabled = false;
-      document.getElementById('exportDocxBtn').disabled = false;
-      document.getElementById('genPptBtn').disabled = false;
-    }
+    document.getElementById('exportMdBtn').disabled = false;
+    document.getElementById('exportDocxBtn').disabled = false;
+    document.getElementById('genPptBtn').disabled = false;
+    document.getElementById('evaluateLessonBtn').disabled = false;
+  }
   } catch (e) {
     toast('加载教案失败: ' + e.message);
   }
@@ -2411,7 +864,7 @@ function showChapterContextMenu(e, chapterId, chapterName, depth) {
   });
 }
 
-// 课程三点菜单（简化版：重命名/删除）
+// 课程三点菜单
 function showCourseContextMenu(e, courseId, courseName) {
   closeAnyMenu();
   const menu = document.createElement('div');
@@ -2421,6 +874,18 @@ function showCourseContextMenu(e, courseId, courseName) {
     <div class="menu-item" data-action="rename">
       <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
       <span>重命名</span>
+    </div>
+    <div class="menu-item" data-action="edit-info">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span>编辑课程信息</span>
+    </div>
+    <div class="menu-item" data-action="set-subject">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.247 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.753 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.753 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.747 0-3.332.477-4.5 1.253"/></svg>
+      <span>设置学科领域</span>
+    </div>
+    <div class="menu-item" data-action="knowledge-graph">
+      <svg class="menu-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      <span>知识图谱</span>
     </div>
     <div class="menu-divider"></div>
     <div class="menu-item danger" data-action="delete">
@@ -2455,6 +920,56 @@ function showCourseContextMenu(e, courseId, courseName) {
       } catch (e) { toast('重命名失败: ' + e.message); }
     }
     closeAnyMenu();
+  };
+  menu.querySelector('[data-action="edit-info"]').onclick = async () => {
+    const currentMajor = state.currentCourseMajor || '';
+    const currentDesc = state.currentCourseDesc || '';
+    const newMajor = await showPrompt('编辑专业（留空则不填）', currentMajor);
+    if (newMajor === null) { closeAnyMenu(); return; }
+    const newDesc = await showPrompt('编辑课程描述（留空则不填）', currentDesc);
+    if (newDesc === null) { closeAnyMenu(); return; }
+    try {
+      const payload = {};
+      if (newMajor.trim() !== currentMajor) payload.major = newMajor.trim() || null;
+      if (newDesc.trim() !== currentDesc) payload.description = newDesc.trim() || null;
+      if (Object.keys(payload).length === 0) { closeAnyMenu(); return; }
+      await api(`/api/courses/${courseId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      toast('课程信息已更新');
+      state.currentCourseMajor = newMajor.trim();
+      state.currentCourseDesc = newDesc.trim();
+      const metaEl = document.getElementById('currentCourseMeta');
+      const parts = [];
+      if (newMajor.trim()) parts.push(`专业：${newMajor.trim()}`);
+      if (state.currentCourseSubject) parts.push(`学科：${SUBJECT_CN_MAP[state.currentCourseSubject] || state.currentCourseSubject}`);
+      if (newDesc.trim()) parts.push(newDesc.trim());
+      metaEl.textContent = parts.join(' | ');
+      await loadCourses();
+    } catch (e) { toast('更新失败: ' + e.message); }
+    closeAnyMenu();
+  };
+  menu.querySelector('[data-action="set-subject"]').onclick = async () => {
+    // 设置课程学科领域(影响AI生成教案/PPT/知识点的学科规范)
+    const currentSubject = state.currentCourseSubject || '';
+    const newSubject = await showSubjectPicker(currentSubject);
+    if (newSubject === undefined) { closeAnyMenu(); return; }
+    if (newSubject === currentSubject) { closeAnyMenu(); return; }
+    try {
+      await api(`/api/courses/${courseId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ subject: newSubject }),
+      });
+      toast('学科领域已更新');
+      state.currentCourseSubject = newSubject;
+      await loadCourses();
+    } catch (e) { toast('更新失败: ' + e.message); }
+    closeAnyMenu();
+  };
+  menu.querySelector('[data-action="knowledge-graph"]').onclick = () => {
+    closeAnyMenu();
+    openKnowledgeGraph();
   };
   menu.querySelector('[data-action="delete"]').onclick = async () => {
     if (!(await showConfirm('删除课程', `确认删除课程「${courseName}」？\n该课程下所有章节、教材、教案将一并删除。`))) {
@@ -2571,20 +1086,29 @@ async function loadMaterials(courseId) {
       return;
     }
     list.innerHTML = data.data.map(m => `
-      <div class="material-item p-2 rounded-md bg-white/60 border border-rule">
+      <div class="material-item p-2 rounded-md bg-white/60 border border-rule ${m.is_primary ? 'ring-1 ring-teal-400 bg-teal-50/40' : ''}">
         <div class="flex items-start justify-between gap-2">
           <div class="flex-1 min-w-0">
-            <div class="text-xs font-medium text-ink truncate">${escapeHtml(m.filename)}</div>
+            <div class="text-xs font-medium text-ink truncate">
+              ${m.is_primary ? '<span class="text-teal-600 mr-0.5" title="主教材">★</span>' : ''}${escapeHtml(m.filename)}
+            </div>
             <div class="text-[10px] text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
               ${renderMaterialBadge(m)}
+              ${m.version_label ? `<span class="px-1.5 py-0.5 rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] whitespace-nowrap">${escapeHtml(m.version_label)}</span>` : ''}
+              ${m.is_primary ? '<span class="px-1.5 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-700 text-[10px] font-medium whitespace-nowrap">主教材</span>' : ''}
               <span>·</span>
               <span>${formatSize(m.file_size)}</span>
               <span>·</span>
               <span>${m.char_count ?? 0}字</span>
             </div>
           </div>
-          <button class="del-mat text-red-400 hover:text-red-600 text-xs" data-id="${m.id}">×</button>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            ${m.is_primary ? '' : `<button class="set-primary-mat text-amber-500 hover:text-amber-700 text-xs" data-id="${m.id}" title="设为主教材">★</button>`}
+            <button class="reupload-mat text-teal-500 hover:text-teal-700 text-xs" data-id="${m.id}" title="替换文件">↻</button>
+            <button class="del-mat text-red-400 hover:text-red-600 text-xs" data-id="${m.id}">×</button>
+          </div>
         </div>
+        <input type="file" class="hidden reupload-input" data-id="${m.id}" accept=".pdf,.docx,.txt,.md">
       </div>
     `).join('');
     list.querySelectorAll('.del-mat').forEach(b => {
@@ -2594,6 +1118,35 @@ async function loadMaterials(courseId) {
           await api(`/api/materials/${b.dataset.id}`, { method: 'DELETE' });
           await loadMaterials(state.currentCourseId);
         } catch (e) { toast('删除失败: ' + e.message); }
+      };
+    });
+    list.querySelectorAll('.set-primary-mat').forEach(b => {
+      b.onclick = async () => {
+        try {
+          const r = await api(`/api/materials/${b.dataset.id}/set-primary`, { method: 'PUT' });
+          toast(r.message || '已设为主教材');
+          await loadMaterials(state.currentCourseId);
+        } catch (e) { toast('设置失败: ' + e.message); }
+      };
+    });
+    list.querySelectorAll('.reupload-mat').forEach(b => {
+      b.onclick = () => {
+        const input = b.closest('.material-item').querySelector('.reupload-input');
+        if (input) input.click();
+      };
+    });
+    list.querySelectorAll('.reupload-input').forEach(input => {
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          await api(`/api/materials/${input.dataset.id}/reupload`, { method: 'PUT', body: fd });
+          toast('文件已替换');
+          await loadMaterials(state.currentCourseId);
+        } catch (e) { toast('替换失败: ' + e.message); }
+        input.value = '';
       };
     });
   } catch (e) {
@@ -2606,25 +1159,34 @@ async function uploadFiles() {
   // H5: 读取教材类型单选
   const radio = document.querySelector('input[name="mat_type"]:checked');
   state.materialType = radio && radio.value && radio.value !== 'other' ? radio.value : null;
+  // 多教材版本管理：读取版本标签 + 主教材勾选（仅作用于首个文件，其余文件忽略主教材标记避免重复设置）
+  const versionLabel = (document.getElementById('versionLabelInput').value || '').trim();
+  const isPrimaryChecked = document.getElementById('isPrimaryCheckbox').checked;
   const btn = document.getElementById('confirmUpload');
   btn.disabled = true;
   btn.textContent = '上传中...';
   try {
-    for (const f of state.pendingFiles) {
+    for (let i = 0; i < state.pendingFiles.length; i++) {
+      const f = state.pendingFiles[i];
       const fd = new FormData();
       fd.append('file', f);
       if (state.materialType) fd.append('material_type', state.materialType);
+      if (versionLabel) fd.append('version_label', versionLabel);
+      // 主教材标记仅附加到本次上传的第一个文件（同课程仅一本主教材）
+      if (isPrimaryChecked && i === 0) fd.append('is_primary', 'true');
       await api(`/api/courses/${state.currentCourseId}/materials`, { method: 'POST', body: fd });
     }
-    toast(`已上传 ${state.pendingFiles.length} 个文件`);
+    toast(`已上传 ${state.pendingFiles.length} 个文件` + (isPrimaryChecked ? '（已设主教材）' : ''));
     state.pendingFiles = [];
     document.getElementById('fileList').innerHTML = '';
     document.getElementById('confirmUpload').disabled = true;
     document.getElementById('uploadModal').classList.add('hidden');
     document.getElementById('uploadModal').classList.remove('flex');
-    // 重置默认项（恢复自动识别默认）
+    // 重置默认项（恢复自动识别默认 + 清空版本标签/主教材勾选）
     const radios = document.querySelectorAll('input[name="mat_type"]');
     radios.forEach(r => { r.checked = (r.value === 'other'); });
+    document.getElementById('versionLabelInput').value = '';
+    document.getElementById('isPrimaryCheckbox').checked = false;
     state.materialType = null;
     await loadMaterials(state.currentCourseId);
   } catch (e) {
@@ -2919,9 +1481,12 @@ function resetLessonParams() {
 async function generateLesson() {
   if (state.knowledgePoints.length === 0) { toast('请先提取知识点'); return; }
   const btn = document.getElementById('genLessonBtn');
+  const addieChecked = document.getElementById('addieModeCheckbox')?.checked;
   btn.disabled = true;
-  btn.textContent = '生成中...';
-  appendAiMessage('正在按六阶段结构生成教案，请稍候（约30-60秒）...');
+  btn.textContent = addieChecked ? 'ADDIE审议中...' : '生成中...';
+  appendAiMessage(addieChecked
+    ? '已启用 ADDIE 多智能体审议：学情分析 → 教案生成 → 自评 → 精修，预计 1-2 分钟...'
+    : '正在按六阶段结构生成教案，请稍候（约30-60秒）...');
 
   try {
     const fd = new FormData();
@@ -2938,6 +1503,8 @@ async function generateLesson() {
     if (state.activeTemplateId) {
       fd.append('template_id', String(state.activeTemplateId));
     }
+    // ADDIE 多智能体审议模式
+    if (addieChecked) fd.append('mode', 'addie');
 
     const data = await api(`/api/courses/${state.currentCourseId}/generate-lesson`, { method: 'POST', body: fd });
     state.currentLessonId = data.data.id;
@@ -2946,7 +1513,33 @@ async function generateLesson() {
     document.getElementById('sendBtn').disabled = false;
     document.getElementById('exportMdBtn').disabled = false;
     document.getElementById('exportDocxBtn').disabled = false;
-    appendAiMessage(`<b class="text-teal-600">教案生成完成 ✓</b><br><span class="text-xs text-muted">六阶段已编排：${data.data.plan.stages.map(s => s.name).join(' / ')}</span><br><span class="text-xs">现在可以在下方对话框输入修改意见，或点击 ③ 生成PPT 按钮制作教学课件，也可导出教案（Markdown / DOCX）</span>`);
+    document.getElementById('evaluateLessonBtn').disabled = false;
+
+    // 渲染 ADDIE 审议过程卡片(若启用)
+    let addieCard = '';
+    if (addieChecked && data.data.addie_meta) {
+      const m = data.data.addie_meta;
+      const la = m.learner_analysis || {};
+      const ev = m.evaluation || {};
+      const issues = (ev.issues || []).slice(0, 4);
+      const score = typeof ev.overall_score === 'number' ? (ev.overall_score >= 0 ? `${ev.overall_score}/100` : '审议失败') : '-';
+      const issuesHtml = issues.length
+        ? issues.map(i => `<li><span class="px-1 rounded ${i.severity==='error'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700'} text-[10px]">${i.severity==='error'?'错误':'警告'}</span> <span class="text-muted">[${escapeHtml(i.dimension||'')}]</span> ${escapeHtml(i.description||'')}</li>`).join('')
+        : '<li class="text-muted">未发现问题</li>';
+      addieCard = `
+        <details class="mt-2 border border-teal-200 bg-teal-50/40 rounded-md p-2 text-xs">
+          <summary class="cursor-pointer text-teal-700 font-medium select-none">🔍 ADDIE 多智能体审议过程${m.refined ? '（已精修）' : ''} · 自评 ${score}</summary>
+          <div class="mt-2 space-y-2">
+            <div><b class="text-ink">学情摘要：</b>${escapeHtml(la.learner_summary || '-')}</div>
+            ${la.cognitive_obstacles && la.cognitive_obstacles.length ? `<div><b class="text-ink">认知障碍点：</b>${la.cognitive_obstacles.map(o=>escapeHtml(o)).join('；')}</div>` : ''}
+            ${la.key_strategies && la.key_strategies.length ? `<div><b class="text-ink">关键策略：</b>${la.key_strategies.map(o=>escapeHtml(o)).join('；')}</div>` : ''}
+            <div><b class="text-ink">自评问题清单：</b><ul class="list-disc pl-4 space-y-0.5 mt-0.5">${issuesHtml}</ul></div>
+            ${m.refine_error ? `<div class="text-red-600">精修失败：${escapeHtml(m.refine_error)}</div>` : ''}
+          </div>
+        </details>`;
+    }
+
+    appendAiMessage(`<b class="text-teal-600">教案生成完成 ✓</b>${addieChecked ? ' <span class="text-[10px] text-teal-700">(ADDIE 多智能体审议)</span>' : ''}<br><span class="text-xs text-muted">六阶段已编排：${data.data.plan.stages.map(s => s.name).join(' / ')}</span>${addieCard}<br><span class="text-xs">现在可以在下方对话框输入修改意见，或点击 ③ 生成PPT 按钮制作教学课件，也可导出教案（Markdown / DOCX）</span>`);
     // 思维导图联动：教案生成后刷新
     await refreshMindmapIfOpen();
   } catch (e) {
@@ -3452,6 +2045,59 @@ async function refreshMindmapIfOpen() {
   }
 }
 
+// ==================== 聊天记录本地存储 ====================
+function getChatStorageKey(courseId) {
+  return `chat_history_${courseId}`;
+}
+
+function saveChatToLocalStorage(courseId, messages) {
+  try {
+    const key = getChatStorageKey(courseId);
+    const existing = loadChatFromLocalStorage(courseId);
+    const merged = mergeChatMessages(existing, messages);
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch (e) {
+    console.warn('saveChatToLocalStorage failed:', e.message);
+  }
+}
+
+function loadChatFromLocalStorage(courseId) {
+  try {
+    const key = getChatStorageKey(courseId);
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn('loadChatFromLocalStorage failed:', e.message);
+    return [];
+  }
+}
+
+function clearChatLocalStorage(courseId) {
+  try {
+    localStorage.removeItem(getChatStorageKey(courseId));
+  } catch (e) {
+    console.warn('clearChatLocalStorage failed:', e.message);
+  }
+}
+
+function mergeChatMessages(local, remote) {
+  const seen = new Set();
+  const result = [];
+  const all = [...local, ...remote];
+  for (const m of all) {
+    const key = m.id ? `${m.role}_${m.id}` : `${m.role}_${m.content}_${m.created_at || ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(m);
+    }
+  }
+  result.sort((a, b) => {
+    if (a.created_at && b.created_at) return new Date(a.created_at) - new Date(b.created_at);
+    return 0;
+  });
+  return result;
+}
+
 // ==================== 对话修改 ====================
 function appendMessage(role, html, isHtml = false) {
   const stream = document.getElementById('chatStream');
@@ -3501,6 +2147,14 @@ async function sendChat() {
       appendAiMessage(`<b class="text-ochre">需澄清：</b>${escapeHtml(data.data.response)}`);
     } else {
       appendAiMessage(escapeHtml(data.data.response));
+    }
+
+    if (state.currentCourseId) {
+      const localMsgs = [
+        { id: Date.now(), role: 'user', content: msg, created_at: new Date().toISOString() },
+        { id: Date.now() + 1, role: 'assistant', content: data.data.response || '', created_at: new Date().toISOString() },
+      ];
+      saveChatToLocalStorage(state.currentCourseId, localMsgs);
     }
   } catch (e) {
     document.querySelectorAll('#chatStream .bubble-ai').forEach(b => {
@@ -3635,6 +2289,251 @@ async function exportLesson(fmt) {
   } finally {
     btn.disabled = false;
     btn.textContent = oldText;
+  }
+}
+
+// ==================== 教案质量评估（借鉴 instructional_agents：多指标打分 + 双视角评审） ====================
+let _lastEvalReport = null; // 缓存最近一次评估报告，供复制使用
+
+async function evaluateLesson() {
+  if (!state.currentLessonId) { toast('请先生成或加载教案'); return; }
+  const btn = document.getElementById('evaluateLessonBtn');
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '评估中...';
+  try {
+    const data = await api(`/api/lessons/${state.currentLessonId}/evaluate`, { method: 'POST' });
+    if (data.success === false) {
+      // 结构化失败提示
+      const errCode = data.data?.error_code || 'UNKNOWN';
+      const fb = data.data?.fallbacks || [];
+      appendAiMessage(`<span class="text-red-600">评估失败 [${errCode}]：</span>${escapeHtml(data.message || '')}${fb.length ? '<br><span class="text-xs text-muted">可选操作：' + fb.map((f,i)=>`<button class="underline text-teal-700" onclick="retryEvaluate()">${f}</button>`).join(' / ') + '</span>' : ''}`);
+      return;
+    }
+    const report = data.data || {};
+    _lastEvalReport = report;
+    renderLessonEvaluation(report, data.message || '');
+    // 同时在对话区简要提示
+    const overall = typeof report.overall_score === 'number' ? report.overall_score.toFixed(2) : '-';
+    appendAiMessage(`<b class="text-teal-600">教案评估完成 ✓</b> 综合得分 <b>${overall}/5.0</b>，<span class="text-xs text-muted">详细报告已弹出，含 6 维度打分与教务专家/学生代表双视角评审</span>`);
+  } catch (e) {
+    toast('评估失败: ' + e.message, 3500);
+    console.error('Evaluate failed:', e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+}
+function retryEvaluate() { evaluateLesson(); }
+
+function closeLessonEvalModal() {
+  const m = document.getElementById('lessonEvalModal');
+  if (!m) return;
+  m.classList.add('hidden');
+  m.classList.remove('flex');
+}
+
+// 评分→颜色等级
+function _scoreColor(score) {
+  if (score >= 4.5) return '#16a34a'; // 优秀 深绿
+  if (score >= 3.5) return '#0d9488'; // 良好 青绿
+  if (score >= 2.5) return '#d97706'; // 合格 橙
+  return '#dc2626'; // 不合格 红
+}
+function _scoreLabel(score) {
+  if (score >= 4.5) return '优秀';
+  if (score >= 3.5) return '良好';
+  if (score >= 2.5) return '合格';
+  return '需改进';
+}
+function _starLevel(level) {
+  // level: 1-5
+  const n = Math.max(0, Math.min(5, parseInt(level) || 0));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+
+function renderLessonEvaluation(report, msg) {
+  const body = document.getElementById('evalModalBody');
+  const subtitle = document.getElementById('evalModalSubtitle');
+  if (!body) return;
+
+  const scores = Array.isArray(report.scores) ? report.scores : [];
+  const overall = typeof report.overall_score === 'number' ? report.overall_score : 0;
+  const topIssues = Array.isArray(report.top_issues) ? report.top_issues : [];
+  const chair = report.chair_validation || {};
+  const student = report.student_validation || {};
+  const errMsg = report.error;
+
+  subtitle.textContent = msg || `综合得分 ${overall.toFixed(2)}/5.0`;
+
+  if (errMsg) {
+    body.innerHTML = `<div class="text-center text-red-600 py-8">评估失败：${escapeHtml(errMsg)}</div>`;
+    openEvalModal();
+    return;
+  }
+
+  // ---- 顶部：综合得分环 ----
+  const overallColor = _scoreColor(overall);
+  const overallLabel = _scoreLabel(overall);
+  const circumference = 2 * Math.PI * 52;
+  const dashOffset = circumference * (1 - overall / 5);
+
+  // ---- 多指标打分卡片 ----
+  const scoreCards = scores.map(s => {
+    const sc = typeof s.score === 'number' ? s.score : 0;
+    const col = _scoreColor(sc);
+    const pct = (sc / 5) * 100;
+    return `
+      <div class="border border-rule rounded-lg p-3 bg-white">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <div class="font-medium text-ink text-sm">${escapeHtml(s.metric || '-')}</div>
+          <div class="text-sm font-bold" style="color:${col}">${sc.toFixed(1)}<span class="text-[10px] text-muted">/5.0</span></div>
+        </div>
+        <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full rounded-full" style="width:${pct}%; background:${col}"></div>
+        </div>
+        ${s.thought ? `<div class="text-[11px] text-muted mt-1.5 leading-relaxed">${escapeHtml(s.thought)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  // ---- 主要问题清单 ----
+  const issuesHtml = topIssues.length
+    ? topIssues.map((t, i) => `<li class="text-xs text-ink-2 leading-relaxed"><span class="text-red-500 mr-1">▸</span>${escapeHtml(t)}</li>`).join('')
+    : '<li class="text-xs text-muted">未识别重大问题</li>';
+
+  // ---- 双视角评审 ----
+  function perspectiveCard(p, accentColor, title) {
+    if (!p || typeof p !== 'object') return '';
+    const rating = p.星级 || p.rating || p.stars || 0;
+    const overall = p.总体评价 || p.overall_assessment || p.overall || '';
+    const strengths = p.优点 || p.strengths || '';
+    const improve = p.改进 || p.areas_for_improvement || p.improvements || '';
+    const suggest = p.建议 || p.recommendations || p.suggestions || '';
+    const summary = p.总结 || p.summary || '';
+    function block(label, content) {
+      if (!content) return '';
+      const text = Array.isArray(content) ? content.map(x => `• ${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}`).join('<br>') : escapeHtml(String(content));
+      return `<div class="mb-1.5"><div class="text-[11px] font-semibold text-ink mb-0.5">${label}</div><div class="text-[11px] text-ink-2 leading-relaxed">${text}</div></div>`;
+    }
+    return `
+      <div class="border-l-4 bg-white rounded-r-lg p-3" style="border-color:${accentColor}">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-ink text-sm">${title}</div>
+          ${rating ? `<div class="text-amber-500 text-sm" title="星级">${_starLevel(rating)} <span class="text-[10px] text-muted">(${rating}/5)</span></div>` : ''}
+        </div>
+        ${block('总体评价', overall)}
+        ${block('优点', strengths)}
+        ${block('待改进', improve)}
+        ${block('建议', suggest)}
+        ${summary ? block('总结', summary) : ''}
+      </div>`;
+  }
+
+  body.innerHTML = `
+    <!-- 综合得分区 -->
+    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-teal-50/60 to-white rounded-lg border border-teal-100">
+      <div class="relative w-32 h-32 flex-shrink-0">
+        <svg class="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="52" stroke="#e5e7eb" stroke-width="8" fill="none"/>
+          <circle cx="60" cy="60" r="52" stroke="${overallColor}" stroke-width="8" fill="none"
+                  stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}" stroke-linecap="round"/>
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <div class="text-2xl font-bold" style="color:${overallColor}">${overall.toFixed(2)}</div>
+          <div class="text-[10px] text-muted">/ 5.0</div>
+          <div class="text-[11px] mt-0.5" style="color:${overallColor}">${overallLabel}</div>
+        </div>
+      </div>
+      <div class="flex-1">
+        <div class="text-sm font-semibold text-ink mb-1">综合质量评估</div>
+        <div class="text-xs text-muted leading-relaxed">基于 6 维度多指标打分聚合，并经教务专家 / 学生代表双视角复核。点击下方各卡片可查看具体评议细节。</div>
+        ${topIssues.length ? `<div class="mt-2 text-[11px] text-red-600">⚠ 识别到 ${topIssues.length} 项主要问题</div>` : ''}
+      </div>
+    </div>
+
+    <!-- 6 维度指标打分 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-teal-600 pl-2">📊 多维度指标打分（${scores.length} 项）</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        ${scoreCards || '<div class="text-xs text-muted col-span-full">无打分数据</div>'}
+      </div>
+    </div>
+
+    <!-- 主要问题清单 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-red-500 pl-2">⚠ 主要问题清单</div>
+      <ul class="space-y-1 pl-2">${issuesHtml}</ul>
+    </div>
+
+    <!-- 双视角评审 -->
+    <div>
+      <div class="text-sm font-semibold text-ink mb-2 border-l-4 border-amber-500 pl-2">👥 双视角评审</div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        ${perspectiveCard(chair, '#0d9488', '🎓 教务专家视角') || '<div class="text-xs text-muted">无教务专家评审</div>'}
+        ${perspectiveCard(student, '#7c3aed', '🎒 学生代表视角') || '<div class="text-xs text-muted">无学生代表评审</div>'}
+      </div>
+    </div>
+  `;
+
+  openEvalModal();
+}
+
+function openEvalModal() {
+  const m = document.getElementById('lessonEvalModal');
+  if (!m) return;
+  m.classList.remove('hidden');
+  m.classList.add('flex');
+}
+
+function copyLessonEvalReport() {
+  if (!_lastEvalReport) { toast('暂无评估报告可复制'); return; }
+  const r = _lastEvalReport;
+  const lines = [];
+  lines.push('# 教案质量评估报告');
+  lines.push('');
+  lines.push(`**综合得分：** ${typeof r.overall_score === 'number' ? r.overall_score.toFixed(2) : '-'} / 5.0`);
+  lines.push('');
+  lines.push('## 多维度指标打分');
+  if (Array.isArray(r.scores) && r.scores.length) {
+    lines.push('| 指标 | 得分 | 评语 |');
+    lines.push('|------|------|------|');
+    r.scores.forEach(s => {
+      const sc = typeof s.score === 'number' ? s.score.toFixed(1) : '-';
+      lines.push(`| ${s.metric || '-'} | ${sc}/5.0 | ${(s.thought || '').replace(/\|/g, '\\|')} |`);
+    });
+  } else { lines.push('_无打分数据_'); }
+  lines.push('');
+  lines.push('## 主要问题清单');
+  if (Array.isArray(r.top_issues) && r.top_issues.length) {
+    r.top_issues.forEach(t => lines.push(`- ${t}`));
+  } else { lines.push('_未识别重大问题_'); }
+  lines.push('');
+  function perspectiveMd(p, title) {
+    if (!p) return '';
+    lines.push(`## ${title}`);
+    if (p.星级 || p.rating) lines.push(`**星级：** ${_starLevel(p.星级 || p.rating)} (${p.星级 || p.rating}/5)`);
+    [['总体评价','总体评价'],['overall_assessment','总体评价'],['overall','总体评价']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${p[k]}`); });
+    [['优点','优点'],['strengths','优点']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['改进','待改进'],['areas_for_improvement','待改进'],['improvements','待改进']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['建议','建议'],['recommendations','建议'],['suggestions','建议']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${Array.isArray(p[k])?p[k].map(x=>'• '+x).join(' '):p[k]}`); });
+    [['总结','总结'],['summary','总结']].forEach(([k,l])=>{ if(p[k]) lines.push(`**${l}：** ${p[k]}`); });
+    lines.push('');
+  }
+  perspectiveMd(r.chair_validation, '教务专家视角');
+  perspectiveMd(r.student_validation, '学生代表视角');
+  if (r.error) lines.push(`\n> 评估异常：${r.error}`);
+  const md = lines.join('\n');
+  try {
+    navigator.clipboard.writeText(md);
+    toast('评估报告已复制到剪贴板');
+  } catch (e) {
+    // 兜底：创建 textarea 选区复制
+    const ta = document.createElement('textarea');
+    ta.value = md; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('评估报告已复制到剪贴板'); }
+    catch (_) { toast('复制失败，请手动选择'); }
+    ta.remove();
   }
 }
 
@@ -3867,6 +2766,12 @@ chatInput.onkeydown = (e) => {
 document.getElementById('sendBtn').onclick = sendChat;
 document.getElementById('exportMdBtn').onclick = () => exportLesson('markdown');
 document.getElementById('exportDocxBtn').onclick = () => exportLesson('docx');
+document.getElementById('evaluateLessonBtn')?.addEventListener('click', evaluateLesson);
+document.getElementById('closeEvalModalBtn')?.addEventListener('click', closeLessonEvalModal);
+document.getElementById('evalCopyBtn')?.addEventListener('click', copyLessonEvalReport);
+document.getElementById('lessonEvalModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'lessonEvalModal') closeLessonEvalModal();
+});
 
 // PPT 导出设置
 document.getElementById('pptClose').onclick = closePptModal;
@@ -4345,6 +3250,13 @@ document.addEventListener('click', (e) => {
       tplm.classList.add('hidden'); tplm.classList.remove('flex');
     }
   }
+  // 知识图谱弹窗
+  const kgm = document.getElementById('knowledgeGraphModal');
+  if (kgm) {
+    if (e.target.closest('.kg-close') || e.target === kgm) {
+      kgm.classList.add('hidden'); kgm.classList.remove('flex');
+    }
+  }
 });
 
 // ---------- H6: 首次引导卡片初始化 ----------
@@ -4394,6 +3306,58 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.disabled = false; btn.textContent = oldT;
         }
       } catch (e) { toast('导出失败: ' + e.message, 3500); }
+    };
+  }
+
+  // ---------- 知识图谱按钮 ----------
+  const kgBtn = document.getElementById('knowledgeGraphBtn');
+  if (kgBtn) {
+    kgBtn.onclick = () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      openKnowledgeGraph();
+    };
+  }
+
+  // ---------- 知识图谱导出 XLSX ----------
+  const kgExpBtn = document.getElementById('kgExportXlsxBtn');
+  if (kgExpBtn) {
+    kgExpBtn.onclick = async () => {
+      if (!state.currentCourseId) { toast('请先选择课程'); return; }
+      try {
+        const btn = kgExpBtn;
+        const oldT = btn.textContent;
+        btn.disabled = true; btn.textContent = '导出中...';
+        try {
+          const res = await fetch(`/api/courses/${state.currentCourseId}/knowledge-points/export-xlsx`, { method: 'POST' });
+          if (!res.ok) {
+            let msg = `导出失败 (${res.status})`;
+            try { const err = await res.json(); msg = err.detail || err.message || msg; } catch(_) {}
+            throw new Error(msg);
+          }
+          const blob = await res.blob();
+          const disposition = res.headers.get('Content-Disposition') || '';
+          let filename = '知识点导出.xlsx';
+          const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+          if (starMatch) filename = decodeURIComponent(starMatch[1]);
+          else { const m = disposition.match(/filename="([^"]+)"/); if (m) filename = m[1]; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = filename;
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          toast('已导出：' + filename);
+        } finally {
+          btn.disabled = false; btn.textContent = oldT;
+        }
+      } catch (e) { toast('导出失败: ' + e.message, 3500); }
+    };
+  }
+
+  // ---------- 知识图谱刷新 ----------
+  const kgRefBtn = document.getElementById('kgRefreshBtn');
+  if (kgRefBtn) {
+    kgRefBtn.onclick = () => {
+      loadKnowledgeGraph();
     };
   }
 
@@ -4578,40 +3542,92 @@ async function doSmartExtract(materialIds) {
   const progressEl = document.getElementById('extractProgress');
   const progressText = document.getElementById('extractProgressText');
   const progressBar = document.getElementById('extractProgressBar');
+  const progressCount = document.getElementById('extractProgressCount');
+  const progressPoints = document.getElementById('extractProgressPoints');
   const confirmBtn = document.getElementById('confirmExtractMatBtn');
   if (progressEl) progressEl.classList.remove('hidden');
-  let stage = 0;
-  const stages = ['正在上传教材指纹 ...', '联网校验知识点准确性 ...', '合并去重 ...', '保存到课程知识库 ...'];
-  const timer = setInterval(() => {
-    stage = Math.min(stages.length - 1, stage + 1);
-    if (progressText) progressText.textContent = stages[stage] || '联网校验中 ...';
-    if (progressBar) progressBar.style.width = Math.min(92, 12 + stage * 20) + '%';
-  }, 1200);
+  if (progressBar) progressBar.style.width = '0%';
+  if (progressPoints) progressPoints.classList.add('hidden');
   if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = '处理中...'; }
+
+  let pollTimer = null;
+  let done = false;
+
+  const startPolling = () => {
+    pollTimer = setInterval(async () => {
+      if (done) return;
+      try {
+        const data = await api(`/api/courses/${state.currentCourseId}/extract-progress`);
+        const p = data.data;
+        if (p.total > 0) {
+          const pct = Math.round((p.current / p.total) * 100);
+          if (progressBar) progressBar.style.width = Math.min(pct, 92) + '%';
+          if (progressText) progressText.textContent = `正在提取知识点（第 ${p.current}/${p.total} 段）...`;
+          if (progressCount) progressCount.textContent = `(${p.points.length} 个知识点已提取)`;
+          if (p.points && p.points.length > 0) {
+            progressPoints.classList.remove('hidden');
+            const existingList = progressPoints.querySelector('.kp-list');
+            let listEl = existingList;
+            if (!listEl) {
+              listEl = document.createElement('div');
+              listEl.className = 'kp-list space-y-0.5';
+              progressPoints.appendChild(listEl);
+            }
+            listEl.innerHTML = p.points.map(kp =>
+              `<div class="flex items-center gap-1 text-teal-700">
+                <span class="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0"></span>
+                <span>${escapeHtml(kp.name || '')}</span>
+              </div>`
+            ).join('');
+          }
+        }
+      } catch (e) {
+        // 轮询失败静默处理
+      }
+    }, 800);
+  };
+
+  startPolling();
 
   try {
     const res = await api(`/api/courses/${state.currentCourseId}/smart-extract-points`, {
       method: 'POST',
       body: JSON.stringify({ material_ids: materialIds || [] }),
     });
-    clearInterval(timer);
+    done = true;
+    if (pollTimer) clearInterval(pollTimer);
     if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = '提取完成 ✓';
+    if (progressCount) progressCount.textContent = '';
+
     const kpCount = (res.data && (res.data.count || res.data.points_count))
       || (Array.isArray(res.data?.points) ? res.data.points.length : 0)
       || 0;
     toast(`✅ 一键提取完成，共 ${kpCount} 个知识点`, 3200);
     appendAiMessage(`<span class="text-teal-600 font-medium">✅ 一键提取知识点完成</span>，共提取 <b>${kpCount}</b> 个知识点。`);
-    // 关闭提取进度
+
+    if (state.currentCourseId) {
+      const localMsgs = [
+        { id: Date.now(), role: 'assistant', content: `✅ 一键提取知识点完成，共提取 ${kpCount} 个知识点。`, created_at: new Date().toISOString() },
+      ];
+      saveChatToLocalStorage(state.currentCourseId, localMsgs);
+    }
+
     setTimeout(() => {
       const em = document.getElementById('extractMaterialsModal');
       if (em) { em.classList.add('hidden'); em.classList.remove('flex'); }
       if (progressEl) progressEl.classList.add('hidden');
     }, 600);
-    // 弹出自定义 confirm 询问"立即导出 XLSX"
+
     const ok = await showConfirm('导出 XLSX', `一键提取完成，共 ${kpCount} 个知识点。\n是否立即按模板导出为 XLSX？`);
     if (ok) document.getElementById('exportKpXlsxBtn')?.click();
+
+    setTimeout(() => {
+      toast('💡 可在课程菜单中查看「知识图谱」浏览知识点关系', 4000);
+    }, 500);
   } catch (e) {
-    clearInterval(timer);
+    done = true;
+    if (pollTimer) clearInterval(pollTimer);
     appendAiMessage(`<span class="text-red-600">一键提取失败：</span>${escapeHtml(e.message)}`);
     showOperationFailure('一键提取知识点失败', e, {
       retryFn: () => doSmartExtract(materialIds),
@@ -4628,7 +3644,7 @@ async function doSmartExtract(materialIds) {
       onHelp: openTutorial,
     });
   } finally {
-    clearInterval(timer);
+    if (pollTimer) clearInterval(pollTimer);
     if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = '确定'; }
   }
 }
@@ -4722,67 +3738,6 @@ function renderTemplateList() {
   });
 }
 
-function renderActiveTemplateInfo() {
-  const nameEl = document.getElementById('activeTplName');
-  const card = document.getElementById('tplInfoCard');
-  if (!card) return;
-  const tpl = state.templates.find(t => t.id === state.activeTemplateId);
-  if (!tpl) {
-    if (nameEl) nameEl.textContent = '未选择';
-    card.innerHTML = '<div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>';
-    return;
-  }
-  if (nameEl) nameEl.textContent = `${tpl.name || '未命名'}${tpl.is_default ? ' ⭐默认' : ''}`;
-  const sj = tpl.structure_json || tpl.structure || tpl.json || {};
-  const defaults = sj.defaults || sj;
-  let infoHtml = `<div class="space-y-2">`;
-  // 基本信息
-  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mb-1">基本信息</div>`;
-  infoHtml += `<div class="grid grid-cols-2 gap-1 text-[10px]">`;
-  if (defaults.course_name) infoHtml += `<div><span class="text-muted">课程名称：</span>${escapeHtml(defaults.course_name)}</div>`;
-  if (defaults.chapter) infoHtml += `<div><span class="text-muted">章节：</span>${escapeHtml(defaults.chapter)}</div>`;
-  infoHtml += `<div><span class="text-muted">总课时：</span>${defaults.total_minutes || 90} 分钟</div>`;
-  infoHtml += `</div>`;
-  // 教学目标
-  if (defaults.knowledge_goal || defaults.ability_goal || defaults.value_goal) {
-    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学目标</div>`;
-    if (defaults.knowledge_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">知识目标：</span>${escapeHtml(String(defaults.knowledge_goal).slice(0, 80))}</div>`;
-    if (defaults.ability_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">能力目标：</span>${escapeHtml(String(defaults.ability_goal).slice(0, 80))}</div>`;
-    if (defaults.value_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">素质目标：</span>${escapeHtml(String(defaults.value_goal).slice(0, 80))}</div>`;
-  }
-  // 重难点
-  const kp = defaults.key_points || [];
-  const dp = defaults.difficult_points || [];
-  if (kp.length || dp.length) {
-    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学重难点</div>`;
-    if (kp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">重点：</span>${kp.length} 个</div>`;
-    if (dp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">难点：</span>${dp.length} 个</div>`;
-  }
-  // 教学过程阶段
-  const stages = defaults.stages || [];
-  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学过程</div>`;
-  if (stages.length) {
-    infoHtml += `<div class="text-[10px]">共 ${stages.length} 个阶段：</div>`;
-    infoHtml += `<ul class="list-disc list-inside text-[10px] text-muted">`;
-    stages.forEach(s => {
-      infoHtml += `<li>${escapeHtml(s.name || '')}（${s.duration_min || 10}分钟）</li>`;
-    });
-    infoHtml += `</ul>`;
-  } else {
-    infoHtml += `<div class="text-[10px] text-muted">（未设置）</div>`;
-  }
-  // 其他
-  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">其他</div>`;
-  infoHtml += `<div class="text-[10px]">`;
-  infoHtml += `<div><span class="text-muted">板书设计：</span>${defaults.board_design ? '✓ 已设置' : '—'}</div>`;
-  const hw = defaults.homework || [];
-  infoHtml += `<div><span class="text-muted">课后作业：</span>${hw.length ? hw.length + ' 项' : '—'}</div>`;
-  infoHtml += `<div><span class="text-muted">教学反思：</span>${defaults.reflection ? '✓ 已设置' : '—'}</div>`;
-  infoHtml += `</div>`;
-  infoHtml += `</div>`;
-  card.innerHTML = infoHtml;
-}
-
 async function createTemplate(name) {
   const payload = {
     name: name || '新模板',
@@ -4831,6 +3786,433 @@ async function uploadTemplate(file, course_id) {
   const data = await api('/api/lesson-templates/import', { method: 'POST', body: fd });
   await loadTemplates();
   return data.data;
+}
+
+// ==================== 知识图谱相关 ====================
+function openKnowledgeGraph() {
+  const m = document.getElementById('knowledgeGraphModal');
+  if (!m) return;
+  m.classList.remove('hidden'); m.classList.add('flex');
+  loadKnowledgeGraph();
+}
+function closeKnowledgeGraph() {
+  const m = document.getElementById('knowledgeGraphModal');
+  if (!m) return;
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+
+async function loadKnowledgeGraph() {
+  if (!state.currentCourseId) return;
+  const statsEl = document.getElementById('kgStats');
+  const courseNameEl = document.getElementById('kgCourseName');
+  const relationView = document.getElementById('kgRelationView');
+  const tableBody = document.getElementById('kgTableBody');
+  const tableCount = document.getElementById('kgTableCount');
+  statsEl.textContent = '加载中...';
+  try {
+    const data = await api(`/api/courses/${state.currentCourseId}/knowledge-graph`);
+    const graph = data.data;
+    if (!graph || !graph.nodes) {
+      statsEl.textContent = '暂无知识点数据';
+      document.getElementById('kgEmptyHint').style.display = '';
+      document.getElementById('kgCytoscape').style.display = 'none';
+      tableBody.innerHTML = '';
+      return;
+    }
+    if (courseNameEl) courseNameEl.textContent = graph.course_name || '';
+    statsEl.textContent = `共 ${graph.node_count} 个知识点，${graph.edge_count} 条语义关系`;
+    if (tableCount) tableCount.textContent = graph.node_count;
+    renderKgRelationView(relationView, graph.nodes, graph.edges);
+    renderKgTableView(tableBody, graph.nodes);
+  } catch (e) {
+    statsEl.textContent = '加载失败';
+    document.getElementById('kgEmptyHint').textContent = `加载失败：${e.message}`;
+  }
+}
+
+// Cytoscape 实例缓存
+let kgCytoscapeInstance = null;
+
+function renderKgRelationView(container, nodes, edges) {
+  const cyContainer = document.getElementById('kgCytoscape');
+  const emptyHint = document.getElementById('kgEmptyHint');
+  if (!cyContainer || !window.cytoscape) {
+    // 降级：无 Cytoscape 库时使用文本视图
+    if (emptyHint) emptyHint.style.display = '';
+    if (cyContainer) cyContainer.style.display = 'none';
+    container.querySelector('#kgEmptyHint').textContent = '图谱库未加载，请检查网络';
+    return;
+  }
+  if ((!nodes || nodes.length === 0) && (!edges || edges.length === 0)) {
+    if (emptyHint) { emptyHint.style.display = ''; emptyHint.textContent = '暂无知识点数据'; }
+    cyContainer.style.display = 'none';
+    return;
+  }
+  if (emptyHint) emptyHint.style.display = 'none';
+  cyContainer.style.display = '';
+
+  // 构造 Cytoscape 元素
+  const cyElements = [];
+  const nodeMap = {};
+  nodes.forEach(n => {
+    nodeMap[n.name] = true;
+    // 根据层级和标签决定节点类型
+    let nodeType = n.layer || 'core';
+    let tagFlags = [];
+    if (n.is_key_point) tagFlags.push('key');
+    if (n.is_difficult) tagFlags.push('diff');
+    if (n.is_exam_point) tagFlags.push('exam');
+    cyElements.push({
+      data: {
+        id: n.name,
+        label: n.name,
+        layer: nodeType,
+        tags: tagFlags.join(','),
+        definition: n.definition || '',
+        prerequisites: (n.prerequisites || []).join('、')
+      }
+    });
+  });
+  (edges || []).forEach(e => {
+    if (nodeMap[e.source] && nodeMap[e.target]) {
+      cyElements.push({
+        data: {
+          source: e.source,
+          target: e.target,
+          relType: e.rel_type || 'prerequisite',
+          label: e.label || '前置依赖'
+        }
+      });
+    }
+  });
+
+  // 销毁旧实例
+  if (kgCytoscapeInstance) {
+    kgCytoscapeInstance.destroy();
+    kgCytoscapeInstance = null;
+  }
+
+  // 青绿水墨配色 (与项目主题一致)
+  kgCytoscapeInstance = cytoscape({
+    container: cyContainer,
+    elements: cyElements,
+    minZoom: 0.3,
+    maxZoom: 3,
+    layout: {
+      name: 'breadthfirst',
+      directed: true,
+      spacingFactor: 1.5,
+      padding: 30,
+      circle: false,
+      animate: true,
+      animationDuration: 300
+    },
+    style: [
+      { selector: 'core', style: {
+        'background-color': '#f0f7f5',
+        'background-image': 'linear-gradient(#d9ebe6 1px, transparent 1px), linear-gradient(90deg, #d9ebe6 1px, transparent 1px)',
+        'background-size': '25px 25px'
+      }},
+      { selector: 'edge', style: {
+        'width': 2,
+        'line-color': '#7fbab0',
+        'target-arrow-shape': 'triangle',
+        'target-arrow-color': '#4a9d8f',
+        'curve-style': 'bezier',
+        'arrow-scale': 1.2,
+        'label': 'data(label)',
+        'font-size': '9px',
+        'color': '#4a9d8f',
+        'text-background-color': '#ffffff',
+        'text-background-opacity': 0.8,
+        'text-background-padding': '2px',
+        'text-rotation': 'autorotate',
+        'text-margin-y': '-6px',
+        'font-family': 'Noto Sans SC, Arial, sans-serif'
+      }},
+      // 关系类型配色
+      { selector: 'edge[relType="prerequisite"]', style: { 'line-color': '#4a9d8f', 'target-arrow-color': '#4a9d8f', 'color': '#4a9d8f' }},
+      { selector: 'edge[relType="支撑"]', style: { 'line-color': '#2196F3', 'target-arrow-color': '#2196F3', 'color': '#2196F3', 'line-style': 'dashed' }},
+      { selector: 'edge[relType="组成"]', style: { 'line-color': '#FF9800', 'target-arrow-color': '#FF9800', 'color': '#FF9800', 'line-style': 'dotted' }},
+      { selector: 'edge[relType="对比"]', style: { 'line-color': '#9C27B0', 'target-arrow-color': '#9C27B0', 'color': '#9C27B0', 'line-style': 'dashed' }},
+      { selector: 'edge[relType="应用"]', style: { 'line-color': '#F44336', 'target-arrow-color': '#F44336', 'color': '#F44336', 'line-style': 'dotted' }},
+      // 基础层 (青绿淡色)
+      { selector: 'node[layer="basic"]', style: {
+        'background-color': '#7fbab0',
+        'shape': 'round-rectangle',
+        'font-size': '11px',
+        'padding': '8px'
+      }},
+      // 核心层 (青绿主色)
+      { selector: 'node[layer="core"]', style: {
+        'background-color': '#2e7d6e',
+        'shape': 'round-rectangle',
+        'font-size': '12px',
+        'padding': '10px'
+      }},
+      // 拓展层 (墨色)
+      { selector: 'node[layer="extension"]', style: {
+        'background-color': '#5a4030',
+        'shape': 'round-rectangle',
+        'font-size': '11px',
+        'padding': '8px'
+      }},
+      // 标记为重点的节点加金色边框
+      { selector: 'node[tags*="key"]', style: {
+        'border-width': 3,
+        'border-color': '#d4a017',
+        'border-style': 'solid'
+      }},
+      // 标记为难点的节点加红色边框
+      { selector: 'node[tags*="diff"]', style: {
+        'border-width': 3,
+        'border-color': '#c0392b',
+        'border-style': 'dashed'
+      }},
+      // 标记为考点的节点加紫色边框
+      { selector: 'node[tags*="exam"]', style: {
+        'border-width': 3,
+        'border-color': '#8e44ad',
+        'border-style': 'double'
+      }},
+      // 通用节点样式
+      { selector: 'node', style: {
+        'label': 'data(label)',
+        'color': '#ffffff',
+        'text-wrap': 'wrap',
+        'text-max-width': '90px',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'font-family': 'Noto Sans SC, Arial, sans-serif',
+        'font-weight': '600',
+        'width': 'label',
+        'height': 'label',
+        'border-width': 1,
+        'border-color': '#b3d7cd'
+      }},
+      // 选中节点高亮
+      { selector: 'node:selected', style: {
+        'background-color': '#236658',
+        'border-width': 4,
+        'border-color': '#d4a017'
+      }}
+    ],
+    wheelSensitivity: 0.2
+  });
+
+  // 点击节点显示详情
+  kgCytoscapeInstance.on('tap', 'node', function(evt) {
+    const node = evt.target;
+    const def = node.data('definition');
+    const prereq = node.data('prerequisites');
+    const tags = node.data('tags');
+    let tagText = '';
+    if (tags) {
+      const tagArr = tags.split(',').filter(Boolean);
+      const tagMap = { key: '重点', diff: '难点', exam: '考点' };
+      tagText = tagArr.map(t => tagMap[t] || t).join('、');
+    }
+    const layer = node.data('layer');
+    const layerMap = { basic: '基础', core: '核心', extension: '拓展' };
+    const layerText = layerMap[layer] || layer;
+    const info = `【${node.data('label')}】 层级：${layerText}${tagText ? ' | 标签：' + tagText : ''}${prereq ? ' | 前置：' + prereq : ''}${def ? '\n' + def : ''}`;
+    toast(info, 5000);
+  });
+
+  // 绑定缩放控件
+  bindKgZoomControls();
+  updateKgZoomIndicator();
+}
+
+function bindKgZoomControls() {
+  const zoomIn = document.getElementById('kgZoomIn');
+  const zoomOut = document.getElementById('kgZoomOut');
+  const fitBtn = document.getElementById('kgFit');
+  if (zoomIn) zoomIn.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.zoom({ level: kgCytoscapeInstance.zoom() * 1.2, renderedPosition: { x: kgCytoscapeInstance.width()/2, y: kgCytoscapeInstance.height()/2 } }); updateKgZoomIndicator(); };
+  if (zoomOut) zoomOut.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.zoom({ level: kgCytoscapeInstance.zoom() / 1.2, renderedPosition: { x: kgCytoscapeInstance.width()/2, y: kgCytoscapeInstance.height()/2 } }); updateKgZoomIndicator(); };
+  if (fitBtn) fitBtn.onclick = () => { if (kgCytoscapeInstance) kgCytoscapeInstance.fit(undefined, 30); updateKgZoomIndicator(); };
+  if (kgCytoscapeInstance) kgCytoscapeInstance.on('zoom pan', updateKgZoomIndicator);
+}
+
+function updateKgZoomIndicator() {
+  const ind = document.getElementById('kgZoomIndicator');
+  if (ind && kgCytoscapeInstance) ind.textContent = Math.round(kgCytoscapeInstance.zoom() * 100) + '%';
+}
+
+function renderKgTableView(tableBody, nodes) {
+  if (!nodes || nodes.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无知识点</td></tr>';
+    return;
+  }
+  let html = '';
+  nodes.forEach((node, i) => {
+    const layerLabel = node.layer === 'basic' ? '基础' : (node.layer === 'core' ? '核心' : '拓展');
+    const tags = [];
+    if (node.is_key_point) tags.push('重点');
+    if (node.is_difficult) tags.push('难点');
+    if (node.is_exam_point) tags.push('考点');
+    const tagStr = tags.length ? tags.join('、') : '—';
+    const prereqStr = (node.prerequisites && node.prerequisites.length)
+      ? node.prerequisites.join('、') : '—';
+    html += `<tr class="${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} border-t border-rule hover:bg-teal-50/50">
+      <td class="px-2 py-1.5 border-r text-muted">${i + 1}</td>
+      <td class="px-2 py-1.5 border-r font-medium text-ink">${escapeHtml(node.name || '')}</td>
+      <td class="px-2 py-1.5 border-r">
+        <span class="tag ${node.layer === 'basic' ? 'tag-basic' : (node.layer === 'core' ? 'tag-core' : 'tag-ext')}">${layerLabel}</span>
+      </td>
+      <td class="px-2 py-1.5 border-r">
+        ${tags.length ? tags.map(t => `<span class="tag ${t === '重点' ? 'tag-key' : (t === '难点' ? 'tag-diff' : 'tag-exam')}">${t}</span>`).join(' ') : '<span class="text-muted">—</span>'}
+      </td>
+      <td class="px-2 py-1.5 border-r text-muted text-[10px]">${escapeHtml(prereqStr)}</td>
+      <td class="px-2 py-1.5 text-muted text-[10px] leading-snug max-w-xs truncate">${escapeHtml((node.definition || '').slice(0, 120))}</td>
+    </tr>`;
+  });
+  tableBody.innerHTML = html;
+}
+
+// ==================== 模板就地编辑 ====================
+let _templateEditState = { editing: false, originalJson: null };
+
+function renderActiveTemplateInfo() {
+  const nameEl = document.getElementById('activeTplName');
+  const card = document.getElementById('tplInfoCard');
+  if (!card) return;
+  const tpl = state.templates.find(t => t.id === state.activeTemplateId);
+  if (!tpl) {
+    if (nameEl) nameEl.textContent = '未选择';
+    card.innerHTML = '<div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>';
+    return;
+  }
+  if (_templateEditState.editing) {
+    renderTemplateEditor(card, tpl);
+    return;
+  }
+  if (nameEl) nameEl.textContent = `${tpl.name || '未命名'}${tpl.is_default ? ' ⭐默认' : ''}`;
+  const sj = tpl.structure_json || tpl.structure || tpl.json || {};
+  const defaults = sj.defaults || sj;
+  let infoHtml = `<div class="space-y-2">`;
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mb-1">基本信息</div>`;
+  infoHtml += `<div class="grid grid-cols-2 gap-1 text-[10px]">`;
+  if (defaults.course_name) infoHtml += `<div><span class="text-muted">课程名称：</span>${escapeHtml(defaults.course_name)}</div>`;
+  if (defaults.chapter) infoHtml += `<div><span class="text-muted">章节：</span>${escapeHtml(defaults.chapter)}</div>`;
+  infoHtml += `<div><span class="text-muted">总课时：</span>${defaults.total_minutes || 90} 分钟</div>`;
+  infoHtml += `</div>`;
+  if (defaults.knowledge_goal || defaults.ability_goal || defaults.value_goal) {
+    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学目标</div>`;
+    if (defaults.knowledge_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">知识目标：</span>${escapeHtml(String(defaults.knowledge_goal).slice(0, 80))}</div>`;
+    if (defaults.ability_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">能力目标：</span>${escapeHtml(String(defaults.ability_goal).slice(0, 80))}</div>`;
+    if (defaults.value_goal) infoHtml += `<div class="text-[10px]"><span class="text-muted">素质目标：</span>${escapeHtml(String(defaults.value_goal).slice(0, 80))}</div>`;
+  }
+  const kp = defaults.key_points || [];
+  const dp = defaults.difficult_points || [];
+  if (kp.length || dp.length) {
+    infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学重难点</div>`;
+    if (kp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">重点：</span>${kp.length} 个</div>`;
+    if (dp.length) infoHtml += `<div class="text-[10px]"><span class="text-muted">难点：</span>${dp.length} 个</div>`;
+  }
+  const stages = defaults.stages || [];
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">教学过程</div>`;
+  if (stages.length) {
+    infoHtml += `<div class="text-[10px]">共 ${stages.length} 个阶段：</div>`;
+    infoHtml += `<ul class="list-disc list-inside text-[10px] text-muted">`;
+    stages.forEach(s => {
+      infoHtml += `<li>${escapeHtml(s.name || '')}（${s.duration_min || 10}分钟）</li>`;
+    });
+    infoHtml += `</ul>`;
+  } else {
+    infoHtml += `<div class="text-[10px] text-muted">（未设置）</div>`;
+  }
+  infoHtml += `<div class="font-medium text-teal-700 border-b pb-1 mt-2 mb-1">其他</div>`;
+  infoHtml += `<div class="text-[10px]">`;
+  infoHtml += `<div><span class="text-muted">板书设计：</span>${defaults.board_design ? '✓ 已设置' : '—'}</div>`;
+  const hw = defaults.homework || [];
+  infoHtml += `<div><span class="text-muted">课后作业：</span>${hw.length ? hw.length + ' 项' : '—'}</div>`;
+  infoHtml += `<div><span class="text-muted">教学反思：</span>${defaults.reflection ? '✓ 已设置' : '—'}</div>`;
+  infoHtml += `</div>`;
+  infoHtml += `</div>`;
+  infoHtml += `<div class="mt-3 flex justify-end gap-2 pt-2 border-t border-rule">`;
+  infoHtml += `<button id="editTplContentBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">✏ 编辑内容</button>`;
+  infoHtml += `</div>`;
+  card.innerHTML = infoHtml;
+  setTimeout(() => {
+    const editBtn = document.getElementById('editTplContentBtn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        _templateEditState.editing = true;
+        _templateEditState.originalJson = JSON.parse(JSON.stringify(tpl.structure_json || {}));
+        renderActiveTemplateInfo();
+      };
+    }
+  }, 0);
+}
+
+function renderTemplateEditor(card, tpl) {
+  card.innerHTML = `
+    <div class="space-y-2">
+      <div class="font-medium text-teal-700 border-b pb-1 mb-1">编辑模板内容（Word）</div>
+      <div class="text-[10px] text-muted mb-1">通过 Word 文档编辑模板，无需处理 JSON</div>
+      <div class="flex flex-col gap-2 py-2">
+        <button id="tplDownloadWordBtn" class="btn-primary px-3 py-2 rounded text-xs">⬇ 下载模板Word文档</button>
+        <div class="flex items-center gap-2 text-muted text-[10px]">
+          <span class="flex-1 border-t border-rule"></span>
+          <span>或</span>
+          <span class="flex-1 border-t border-rule"></span>
+        </div>
+        <button id="tplUploadWordBtn" class="btn-ghost px-3 py-2 rounded text-xs">📄 上传已编辑的Word文档</button>
+        <input id="tplUploadWordInput" type="file" accept=".docx" class="hidden">
+      </div>
+      <div id="tplWordEditStatus" class="text-[10px] text-muted text-center"></div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button id="tplEditorCancelBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">取消</button>
+      </div>
+    </div>
+  `;
+  setTimeout(() => {
+    document.getElementById('tplDownloadWordBtn').onclick = () => {
+      downloadTemplateDocx(tpl);
+      document.getElementById('tplWordEditStatus').textContent = '✅ 已下载，请在 Word 中编辑后上传';
+    };
+    document.getElementById('tplUploadWordBtn').onclick = () => {
+      document.getElementById('tplUploadWordInput').click();
+    };
+    document.getElementById('tplUploadWordInput').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      await uploadEditedTemplate(tpl, file);
+      e.target.value = '';
+    };
+    document.getElementById('tplEditorCancelBtn').onclick = () => {
+      _templateEditState.editing = false;
+      _templateEditState.originalJson = null;
+      renderActiveTemplateInfo();
+    };
+  }, 0);
+}
+
+async function uploadEditedTemplate(tpl, file) {
+  const statusEl = document.getElementById('tplWordEditStatus');
+  try {
+    statusEl.textContent = '⏳ 上传解析中...';
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`/api/lesson-templates/${tpl.id}/upload-docx`, {
+      method: 'PUT',
+      body: formData,
+    });
+    if (!res.ok) {
+      let msg = '上传失败';
+      try { const err = await res.json(); msg = err.detail || err.message || msg; } catch(_) {}
+      throw new Error(msg);
+    }
+    statusEl.textContent = '✅ 模板已从 Word 文档更新';
+    toast('模板已从 Word 文档更新');
+    _templateEditState.editing = false;
+    _templateEditState.originalJson = null;
+    await loadTemplates();
+  } catch (e) {
+    statusEl.textContent = '❌ ' + e.message;
+    toast('上传失败: ' + e.message, 3500);
+  }
 }
 
 // ==================== F1: 教案全屏预览 + in-place 编辑 ====================
@@ -5119,32 +4501,46 @@ async function saveEditedLesson() {
 async function loadChatHistory(courseId) {
   const stream = document.getElementById('chatStream');
   if (!stream || !courseId) return;
-  // 清空既有对话气泡（保留 tutorialGuideCard 与 chatEmptyState）
   stream.querySelectorAll('.fade-in').forEach(el => el.remove());
   const emptyState = document.getElementById('chatEmptyState');
+
+  const localMsgs = loadChatFromLocalStorage(courseId);
+  if (localMsgs.length > 0) {
+    if (emptyState) emptyState.classList.add('hidden');
+    localMsgs.forEach(m => {
+      const role = m.role === 'user' ? 'user' : 'assistant';
+      const content = m.content || '';
+      if (role === 'user') appendUserMessage(content);
+      else appendAiMessage(content);
+    });
+    stream.scrollTop = stream.scrollHeight;
+  }
+
   try {
     const data = await api(`/api/courses/${courseId}/chat-messages`);
-    const msgs = Array.isArray(data.data) ? data.data : [];
-    if (msgs.length === 0) {
+    const remoteMsgs = Array.isArray(data.data) ? data.data : [];
+    if (remoteMsgs.length === 0 && localMsgs.length === 0) {
       if (emptyState) emptyState.classList.remove('hidden');
       toast('暂无历史对话', 1500);
       return;
     }
     if (emptyState) emptyState.classList.add('hidden');
-    msgs.forEach(m => {
-      const role = m.role === 'user' ? 'user' : 'assistant';
-      const content = m.content || '';
-      if (role === 'user') {
-        appendUserMessage(content);
-      } else {
-        // 历史助手消息按 HTML 渲染（兼容历史富文本）
-        appendAiMessage(content);
-      }
-    });
-    stream.scrollTop = stream.scrollHeight;
+
+    const merged = mergeChatMessages(localMsgs, remoteMsgs);
+    saveChatToLocalStorage(courseId, remoteMsgs);
+
+    if (remoteMsgs.length > 0 && localMsgs.length !== remoteMsgs.length) {
+      stream.querySelectorAll('.fade-in').forEach(el => el.remove());
+      merged.forEach(m => {
+        const role = m.role === 'user' ? 'user' : 'assistant';
+        const content = m.content || '';
+        if (role === 'user') appendUserMessage(content);
+        else appendAiMessage(content);
+      });
+      stream.scrollTop = stream.scrollHeight;
+    }
   } catch (e) {
-    // 后端可能尚未添加该路由，静默失败以避免影响主流程
-    if (emptyState) emptyState.classList.remove('hidden');
+    if (localMsgs.length === 0 && emptyState) emptyState.classList.remove('hidden');
     console.warn('loadChatHistory failed:', e.message);
   }
 }
@@ -5196,6 +4592,3 @@ document.getElementById('fullscreenLessonModal')?.addEventListener('click', (e) 
   `;
   document.head.appendChild(style);
 })();
-</script>
-</body>
-</html>
