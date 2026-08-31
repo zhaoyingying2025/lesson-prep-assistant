@@ -1,11 +1,20 @@
 """API 路由汇总（MVP简化版，所有路由聚合便于维护）"""
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
+import logging
+import re
+import secrets
+import string
 import urllib.parse
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -14,8 +23,14 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agents.chat_agent import modify_lesson
-from ..agents.knowledge_agent import extract_knowledge
+from ..agents.knowledge_agent import (
+    chunked_extract_knowledge,
+    extract_knowledge,
+    organize_knowledge_into_chapters,
+)
 from ..agents.lesson_agent import generate_lesson
+from ..agents.lesson_agent_addie import generate_lesson_with_addie
+from ..agents.material_evaluator import evaluate_lesson_independent
 from ..agents.ppt_agent import generate_ppt_content
 from ..agents.smart_extract_agent import smart_extract
 from ..core.llm import (
@@ -26,40 +41,129 @@ from ..core.llm import (
     reset_llm,
 )
 from ..core.parser import ParseError, detect_material_type, make_preview, parse_file
+from ..core.content_validator import validate_lesson, validate_ppt
 from ..core.textbook_cache import index_material, search_textbook, get_knowledge_point_context
 from ..exporters.docx_export import export_docx
 from ..exporters.markdown import export_markdown
-from ..exporters.pptx_export import export_teaching_pptx
+from ..exporters.pptx_export import export_teaching_pptx, generate_ppt_preview_html
+from ..exporters.template_docx import generate_template_docx, parse_template_docx
 from ..models.schemas import (
     ApiResponse,
+    ApprovalReview,
+    ApprovalSubmit,
     ChatRequest,
+    CommentCreate,
     CourseCreate,
+    LEGACY_MATERIAL_TYPE_MAP,
     LessonParams,
     LessonPlan,
+    LessonTemplateCreate,
+    LessonTemplateUpdate,
     LLMSettingsUpdate,
+    MarketResourceCreate,
+    MarketResourceOut,
+    MarketResourceRate,
+    ScheduleCreate,
+    ScheduleUpdate,
+    ShareCodeCreate,
+    WorkflowCreate,
+    WorkflowExecutionOut,
+    WorkflowExecuteRequest,
+    WorkflowOut,
+    WorkflowStepCreate,
+    WorkflowUpdate,
 )
 from ..storage.db import (
+    ApprovalORM,
     ChatMessageORM,
     ChapterORM,
+    CommentORM,
     CourseORM,
     KnowledgePointORM,
     LessonORM,
+    LessonTemplateORM,
+    LessonVersionORM,
+    MarketResourceORM,
     MaterialORM,
     PptRecordORM,
+    PptTemplateORM,
+    ScheduleORM,
+    ShareCodeORM,
+    WorkflowExecutionORM,
+    WorkflowORM,
+    WorkflowStepExecutionORM,
+    WorkflowStepORM,
     get_session,
 )
+from ..agents.workflow_engine import AGENT_REGISTRY, execute_workflow
 from ..storage.file_store import save_upload
 
+# 六类合法教材类型枚举
+VALID_MATERIAL_TYPES = {"syllabus", "textbook", "reference", "exercise_book", "paper", "other"}
+# 六类中文标签（用于前端展示）
+MATERIAL_TYPE_LABELS = {
+    "syllabus": "课程标准/大纲",
+    "textbook": "教科书",
+    "reference": "教参教辅",
+    "exercise_book": "练习题册",
+    "paper": "学术论文",
+    "other": "其他",
+}
+# 教案/PPT生成失败时的fallback操作集合
+FALLBACK_ACTIONS = ["retry", "lower_params", "template_fallback", "export_draft", "open_help"]
+
+
+def _normalize_material_type(raw: str | None) -> tuple[str, str | None]:
+    """规范化教材类型：支持legacy映射、非法值回退other；返回 (type, hint_or_None)"""
+    if not raw:
+        return ("other", None)
+    t = raw.strip()
+    # legacy映射
+    if t in LEGACY_MATERIAL_TYPE_MAP:
+        return (LEGACY_MATERIAL_TYPE_MAP[t], f"类型已兼容：旧值 {t} → {LEGACY_MATERIAL_TYPE_MAP[t]}")
+    if t in VALID_MATERIAL_TYPES:
+        return (t, None)
+    return ("other", f"类型已修正：未知类型 {t} → other")
+
+
 router = APIRouter(prefix="/api")
+
+# 知识点提取进度跟踪（内存存储，单进程适用）
+_extract_progress: dict[int, dict] = {}
+
+async def _update_extract_progress(course_id: int, current: int, total: int, points: list):
+    _extract_progress[course_id] = {
+        "current": current,
+        "total": total,
+        "points": points,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+async def _compute_course_content_hash(session: AsyncSession, course_id: int) -> str:
+    """计算课程所有教材内容的 SHA256 哈希值，用于增量提取缓存判断"""
+    result = await session.execute(
+        select(MaterialORM).where(MaterialORM.course_id == course_id)
+    )
+    materials = result.scalars().all()
+    texts = []
+    for m in materials:
+        if m.content_text:
+            texts.append(m.content_text)
+    combined = "\n".join(texts)
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest() if combined else ""
 
 
 # ============================================================
 # 课程管理
 # ============================================================
 @router.get("/courses")
-async def list_courses():
+async def list_courses(keyword: str = ""):
     async for session in get_session():
-        result = await session.execute(select(CourseORM).order_by(CourseORM.created_at.desc()))
+        query = select(CourseORM).order_by(CourseORM.is_pinned.desc(), CourseORM.created_at.desc())
+        if keyword:
+            query = query.where(CourseORM.name.ilike(f"%{keyword}%"))
+        result = await session.execute(query)
         courses = result.scalars().all()
         return ApiResponse(
             data=[
@@ -68,6 +172,8 @@ async def list_courses():
                     "name": c.name,
                     "major": c.major,
                     "description": c.description,
+                    "subject": c.subject or "",
+                    "is_pinned": c.is_pinned or False,
                     "created_at": c.created_at.isoformat() if c.created_at else None,
                 }
                 for c in courses
@@ -82,6 +188,7 @@ async def create_course(payload: CourseCreate):
             name=payload.name,
             major=payload.major,
             description=payload.description,
+            subject=payload.subject or "",
         )
         session.add(course)
         await session.commit()
@@ -93,6 +200,7 @@ async def create_course(payload: CourseCreate):
                 "name": course.name,
                 "major": course.major,
                 "description": course.description,
+                "subject": course.subject or "",
                 "created_at": course.created_at.isoformat() if course.created_at else None,
             },
         )
@@ -110,6 +218,7 @@ async def get_course(course_id: int):
                 "name": course.name,
                 "major": course.major,
                 "description": course.description,
+                "subject": course.subject or "",
                 "created_at": course.created_at.isoformat() if course.created_at else None,
             }
         )
@@ -160,7 +269,7 @@ async def delete_course(course_id: int):
 
 @router.put("/courses/{course_id}")
 async def update_course(course_id: int, payload: dict):
-    """更新课程信息（名称/专业/描述）"""
+    """更新课程信息（名称/专业/描述/学科/置顶）"""
     async for session in get_session():
         course = await session.get(CourseORM, course_id)
         if not course:
@@ -174,6 +283,10 @@ async def update_course(course_id: int, payload: dict):
             course.major = (payload.get("major") or "").strip() or None
         if "description" in payload:
             course.description = (payload.get("description") or "").strip() or None
+        if "subject" in payload:
+            course.subject = (payload.get("subject") or "").strip()
+        if "is_pinned" in payload:
+            course.is_pinned = bool(payload["is_pinned"])
         await session.commit()
         await session.refresh(course)
         return ApiResponse(
@@ -183,6 +296,8 @@ async def update_course(course_id: int, payload: dict):
                 "name": course.name,
                 "major": course.major,
                 "description": course.description,
+                "subject": course.subject or "",
+                "is_pinned": course.is_pinned or False,
                 "created_at": course.created_at.isoformat() if course.created_at else None,
             },
         )
@@ -342,6 +457,8 @@ async def upload_material(
     course_id: int,
     file: UploadFile = File(...),
     material_type: Optional[str] = Form(None),
+    version_label: Optional[str] = Form(None),
+    is_primary: Optional[bool] = Form(None),
 ):
     async for session in get_session():
         course = await session.get(CourseORM, course_id)
@@ -366,8 +483,18 @@ async def upload_material(
         else:
             parse_error = None
 
-        # 类型检测
-        detected_type = material_type or detect_material_type(file.filename or "", content_text)
+        # 类型检测：优先用户预选 → 启发式检测 → 规范化
+        raw_type = material_type or detect_material_type(file.filename or "", content_text)
+        detected_type, type_hint = _normalize_material_type(raw_type)
+
+        # 若设为主教材,先清除该课程下其他教材的主教材标记(同课程仅一本主教材)
+        primary_flag = bool(is_primary) if is_primary is not None else False
+        if primary_flag:
+            await session.execute(
+                __import__("sqlalchemy").update(MaterialORM)
+                .where(MaterialORM.course_id == course_id)
+                .values(is_primary=False)
+            )
 
         # 入库
         material = MaterialORM(
@@ -375,6 +502,8 @@ async def upload_material(
             filename=file.filename or "unnamed",
             stored_path=str(stored_path),
             material_type=detected_type,
+            version_label=(version_label or "").strip(),
+            is_primary=primary_flag,
             file_size=len(file_bytes),
             content_text=content_text,
             content_preview=make_preview(content_text),
@@ -395,19 +524,131 @@ async def upload_material(
         else:
             indexed_pages = 0
 
+        # 更新课程内容哈希（增量缓存）
+        course.content_hash = await _compute_course_content_hash(session, course_id)
+        await session.commit()
+
+        message_parts = ["文件上传成功"]
+        if parse_error:
+            message_parts.append("（部分内容解析失败）")
+        if type_hint:
+            message_parts.append(f"（{type_hint}）")
+        if primary_flag:
+            message_parts.append("（已设为主教材）")
         return ApiResponse(
-            message="文件上传成功" + ("（部分内容解析失败）" if parse_error else ""),
+            message="".join(message_parts),
             data={
                 "id": material.id,
                 "course_id": material.course_id,
                 "filename": material.filename,
                 "material_type": material.material_type,
+                "material_type_label": MATERIAL_TYPE_LABELS.get(material.material_type, "其他"),
+                "version_label": material.version_label or "",
+                "is_primary": material.is_primary,
                 "file_size": material.file_size,
                 "char_count": material.char_count,
                 "content_preview": material.content_preview,
                 "indexed_pages": indexed_pages,
                 "parse_error": parse_error,
                 "created_at": material.created_at.isoformat() if material.created_at else None,
+            },
+        )
+
+
+@router.put("/materials/{material_id}")
+async def update_material(material_id: int, payload: dict):
+    """修改教材信息（material_type / filename / version_label / is_primary）"""
+    async for session in get_session():
+        m = await session.get(MaterialORM, material_id)
+        if not m:
+            raise HTTPException(404, "材料不存在")
+        hint = ""
+        new_type = payload.get("material_type")
+        if new_type is not None:
+            norm_type, hint = _normalize_material_type(new_type)
+            m.material_type = norm_type
+        new_filename = payload.get("filename")
+        if new_filename and isinstance(new_filename, str):
+            m.filename = new_filename[:255]
+        new_version = payload.get("version_label")
+        if new_version is not None and isinstance(new_version, str):
+            m.version_label = new_version.strip()[:100]
+        # 设置主教材：同课程仅一本主教材
+        if "is_primary" in payload:
+            primary_flag = bool(payload.get("is_primary"))
+            if primary_flag:
+                await session.execute(
+                    __import__("sqlalchemy").update(MaterialORM)
+                    .where(MaterialORM.course_id == m.course_id)
+                    .values(is_primary=False)
+                )
+            m.is_primary = primary_flag
+        await session.commit()
+        await session.refresh(m)
+        msg = "教材信息已更新"
+        if hint:
+            msg += f"（{hint}）"
+        if m.is_primary:
+            msg += "（主教材）"
+        return ApiResponse(
+            message=msg,
+            data={
+                "id": m.id,
+                "filename": m.filename,
+                "material_type": m.material_type,
+                "material_type_label": MATERIAL_TYPE_LABELS.get(m.material_type, "其他"),
+                "version_label": m.version_label or "",
+                "is_primary": m.is_primary,
+            },
+        )
+
+
+@router.put("/materials/{material_id}/reupload")
+async def reupload_material(material_id: int, file: UploadFile = File(...)):
+    """重新上传教材文件（替换文件内容，保留原记录ID和元数据）"""
+    async for session in get_session():
+        m = await session.get(MaterialORM, material_id)
+        if not m:
+            raise HTTPException(404, "材料不存在")
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(400, "文件为空")
+        # 删除旧文件
+        try:
+            Path(m.stored_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+        # 保存新文件
+        stored_path = await save_upload(file_bytes, file.filename or m.filename, m.course_id)
+        # 解析新文件
+        try:
+            content_text = parse_file(Path(stored_path))
+        except ParseError:
+            content_text = ""
+        m.filename = file.filename or m.filename
+        m.stored_path = str(stored_path)
+        m.file_size = len(file_bytes)
+        m.content_text = content_text
+        m.content_preview = make_preview(content_text)
+        m.char_count = len(content_text)
+        await session.commit()
+
+        # 更新课程内容哈希（增量缓存）
+        course = await session.get(CourseORM, m.course_id)
+        if course:
+            course.content_hash = await _compute_course_content_hash(session, m.course_id)
+            await session.commit()
+
+        await session.refresh(m)
+        return ApiResponse(
+            message="教材文件已替换",
+            data={
+                "id": m.id,
+                "filename": m.filename,
+                "material_type": m.material_type,
+                "file_size": m.file_size,
+                "char_count": m.char_count,
+                "content_preview": m.content_preview,
             },
         )
 
@@ -428,6 +669,9 @@ async def list_materials(course_id: int):
                     "course_id": m.course_id,
                     "filename": m.filename,
                     "material_type": m.material_type,
+                    "material_type_label": MATERIAL_TYPE_LABELS.get(m.material_type, "其他"),
+                    "version_label": m.version_label or "",
+                    "is_primary": bool(m.is_primary),
                     "file_size": m.file_size,
                     "char_count": m.char_count,
                     "content_preview": m.content_preview,
@@ -435,6 +679,48 @@ async def list_materials(course_id: int):
                 }
                 for m in materials
             ]
+        )
+
+
+@router.get("/materials/types")
+async def list_material_types():
+    """返回六类教材类型枚举：value + label + 颜色，便于前端渲染单选和badge"""
+    return ApiResponse(data={
+        "types": [
+            {"value": "syllabus", "label": "课程标准/大纲", "color": "bg-purple-100 text-purple-700 border-purple-200"},
+            {"value": "textbook", "label": "教科书", "color": "bg-emerald-100 text-emerald-700 border-emerald-200"},
+            {"value": "reference", "label": "教参教辅", "color": "bg-sky-100 text-sky-700 border-sky-200"},
+            {"value": "exercise_book", "label": "练习题册", "color": "bg-amber-100 text-amber-700 border-amber-200"},
+            {"value": "paper", "label": "学术论文", "color": "bg-rose-100 text-rose-700 border-rose-200"},
+            {"value": "other", "label": "其他", "color": "bg-slate-100 text-slate-700 border-slate-200"},
+        ]
+    })
+
+
+@router.put("/materials/{material_id}/set-primary")
+async def set_primary_material(material_id: int):
+    """将该教材设为课程的主教材（同课程仅一本主教材，AI生成时优先检索）"""
+    async for session in get_session():
+        m = await session.get(MaterialORM, material_id)
+        if not m:
+            raise HTTPException(404, "材料不存在")
+        # 清除该课程下其他教材的主教材标记
+        await session.execute(
+            __import__("sqlalchemy").update(MaterialORM)
+            .where(MaterialORM.course_id == m.course_id)
+            .values(is_primary=False)
+        )
+        m.is_primary = True
+        await session.commit()
+        await session.refresh(m)
+        return ApiResponse(
+            message=f"已将「{m.filename}」设为主教材",
+            data={
+                "id": m.id,
+                "filename": m.filename,
+                "is_primary": m.is_primary,
+                "version_label": m.version_label or "",
+            },
         )
 
 
@@ -465,6 +751,7 @@ async def delete_material(material_id: int):
         m = await session.get(MaterialORM, material_id)
         if not m:
             raise HTTPException(404, "材料不存在")
+        course_id = m.course_id
         # 删除文件
         try:
             Path(m.stored_path).unlink(missing_ok=True)
@@ -472,6 +759,11 @@ async def delete_material(material_id: int):
             pass
         await session.delete(m)
         await session.commit()
+        # 更新课程内容哈希（增量缓存）
+        course = await session.get(CourseORM, course_id)
+        if course:
+            course.content_hash = await _compute_course_content_hash(session, course_id)
+            await session.commit()
         return ApiResponse(message="材料已删除")
 
 
@@ -512,8 +804,40 @@ async def extract_knowledge_api(
         if not combined.strip():
             raise HTTPException(400, "教材内容为空，请上传可解析的文件")
 
+        # 增量缓存判断：内容未变化则跳过 LLM 调用，直接返回已有知识点
+        current_hash = await _compute_course_content_hash(session, course_id)
+        if current_hash and current_hash == course.content_hash:
+            cached_kps = (await session.execute(
+                select(KnowledgePointORM).where(
+                    KnowledgePointORM.course_id == course_id,
+                    KnowledgePointORM.chapter == chapter,
+                ).order_by(KnowledgePointORM.sort_order)
+            )).scalars().all()
+            if cached_kps:
+                points_with_id = [
+                    {
+                        "id": kp.id,
+                        "name": kp.name,
+                        "definition": kp.definition,
+                        "source_pages": kp.source_pages or "",
+                        "layer": kp.layer,
+                        "is_key_point": bool(kp.is_key_point),
+                        "is_difficult": bool(kp.is_difficult),
+                        "is_exam_point": bool(kp.is_exam_point),
+                        "sort_order": kp.sort_order,
+                    }
+                    for kp in cached_kps
+                ]
+                return ApiResponse(
+                    message=f"教材内容未变化，已从缓存加载 {len(points_with_id)} 个知识点",
+                    data={"points": points_with_id, "summary": "（缓存数据，教材内容无变化）"},
+                )
+
         try:
-            result = await extract_knowledge(course.name, chapter, combined)
+            result = await extract_knowledge(
+                course.name, chapter, combined,
+                subject=course.subject or None,
+            )
         except LLMError as e:
             raise HTTPException(502, str(e))
 
@@ -546,6 +870,33 @@ async def extract_knowledge_api(
             session.add(kp)
             saved_points.append(kp)
         await session.commit()
+
+        # 更新增量缓存标记
+        course.content_hash = await _compute_course_content_hash(session, course_id)
+        course.last_extracted_at = datetime.utcnow()
+        await session.commit()
+
+        # 确保章节记录存在
+        chapter_record = await session.execute(
+            select(ChapterORM).where(
+                ChapterORM.course_id == course_id,
+                ChapterORM.name == chapter,
+            )
+        ).scalars().first()
+        if not chapter_record:
+            chapter_record = ChapterORM(
+                course_id=course_id,
+                parent_id=None,
+                name=chapter,
+                sort_order=0,
+            )
+            session.add(chapter_record)
+            await session.commit()
+            await session.refresh(chapter_record)
+        for kp in saved_points:
+            kp.chapter_id = chapter_record.id
+        await session.commit()
+
         for kp in saved_points:
             await session.refresh(kp)
 
@@ -602,11 +953,52 @@ async def smart_extract_api(course_id: int):
         if not combined.strip():
             raise HTTPException(400, "教材内容为空")
 
+        # 增量缓存判断：内容未变化则跳过 LLM 调用，直接返回已有章节和知识点
+        current_hash = await _compute_course_content_hash(session, course_id)
+        if current_hash and current_hash == course.content_hash:
+            existing_chapters = (await session.execute(
+                select(ChapterORM).where(
+                    ChapterORM.course_id == course_id,
+                    ChapterORM.parent_id.is_(None),
+                ).order_by(ChapterORM.sort_order)
+            )).scalars().all()
+            if existing_chapters:
+                kp_count = (await session.execute(
+                    select(func.count(KnowledgePointORM.id)).where(
+                        KnowledgePointORM.course_id == course_id,
+                    )
+                )).scalar() or 0
+                cached_chapters = []
+                async def _build_chapter_node(ch: ChapterORM) -> dict:
+                    children = []
+                    for child in (ch.children or []):
+                        child_node = await _build_chapter_node(child)
+                        children.append(child_node)
+                    kps = (await session.execute(
+                        select(KnowledgePointORM).where(
+                            KnowledgePointORM.course_id == course_id,
+                            KnowledgePointORM.chapter_id == ch.id,
+                        ).order_by(KnowledgePointORM.sort_order)
+                    )).scalars().all()
+                    return {
+                        "id": ch.id,
+                        "name": ch.name,
+                        "children": children,
+                        "knowledge_points": [_kp_to_dict(kp) for kp in kps],
+                    }
+                for ch in existing_chapters:
+                    cached_chapters.append(await _build_chapter_node(ch))
+                return ApiResponse(
+                    message=f"教材内容未变化，已从缓存加载 {len(cached_chapters)} 个章节，{kp_count} 个知识点",
+                    data={"chapters": cached_chapters, "total_kp": kp_count},
+                )
+
         try:
             chapter_tree = await smart_extract(
                 course.name,
                 ", ".join(filenames),
                 combined,
+                subject=course.subject or None,
             )
         except LLMError as e:
             raise HTTPException(502, str(e))
@@ -685,6 +1077,11 @@ async def smart_extract_api(course_id: int):
 
         await session.commit()
 
+        # 更新增量缓存标记
+        course.content_hash = await _compute_course_content_hash(session, course_id)
+        course.last_extracted_at = datetime.utcnow()
+        await session.commit()
+
         # 统计知识点总数
         all_kp_count = 0
         def _count_kp(nodes):
@@ -706,6 +1103,17 @@ async def smart_extract_api(course_id: int):
 # ============================================================
 # 知识点 CRUD（手动编辑/增删/标签切换）
 # ============================================================
+# 关系类型中文映射
+_REL_TYPE_CN = {
+    "依赖": "前置依赖",
+    "支撑": "理论支撑",
+    "组成": "组成部分",
+    "对比": "对比关系",
+    "应用": "应用关系",
+    "prerequisite": "前置依赖",
+}
+
+
 def _kp_to_dict(kp: KnowledgePointORM) -> dict:
     return {
         "id": kp.id,
@@ -714,11 +1122,12 @@ def _kp_to_dict(kp: KnowledgePointORM) -> dict:
         "chapter": kp.chapter,
         "name": kp.name,
         "definition": kp.definition,
-        "source_pages": kp.source_pages or "",
         "layer": kp.layer,
         "is_key_point": bool(kp.is_key_point),
         "is_difficult": bool(kp.is_difficult),
         "is_exam_point": bool(kp.is_exam_point),
+        "prerequisites": kp.prerequisites_json or [],
+        "relationships": kp.relationships_json or [],
         "sort_order": kp.sort_order,
     }
 
@@ -748,14 +1157,32 @@ async def _build_textbook_context(
 
 
 @router.get("/courses/{course_id}/knowledge-points")
-async def list_knowledge_points(course_id: int, chapter: Optional[str] = None, chapter_id: Optional[int] = None):
-    """列出课程（或某章节）的知识点，支持按 chapter 名称或 chapter_id 筛选"""
+async def list_knowledge_points(course_id: int, chapter: Optional[str] = None, chapter_id: Optional[int] = None, include_children: bool = False):
+    """列出课程（或某章节）的知识点，支持按 chapter 名称或 chapter_id 筛选。
+    include_children=true 时会递归收集该章节的所有子孙章节的知识点。"""
     async for session in get_session():
         stmt = select(KnowledgePointORM).where(KnowledgePointORM.course_id == course_id)
         if chapter:
             stmt = stmt.where(KnowledgePointORM.chapter == chapter)
         if chapter_id is not None:
-            stmt = stmt.where(KnowledgePointORM.chapter_id == chapter_id)
+            if include_children:
+                # 递归收集该章节及所有子孙章节的 ID
+                all_chapters = (await session.execute(
+                    select(ChapterORM).where(ChapterORM.course_id == course_id)
+                )).scalars().all()
+                children_map: dict = {}
+                for ch in all_chapters:
+                    children_map.setdefault(ch.parent_id, []).append(ch.id)
+                chapter_ids = [chapter_id]
+                queue = [chapter_id]
+                while queue:
+                    parent = queue.pop(0)
+                    for child_id in children_map.get(parent, []):
+                        chapter_ids.append(child_id)
+                        queue.append(child_id)
+                stmt = stmt.where(KnowledgePointORM.chapter_id.in_(chapter_ids))
+            else:
+                stmt = stmt.where(KnowledgePointORM.chapter_id == chapter_id)
         stmt = stmt.order_by(KnowledgePointORM.sort_order)
         result = await session.execute(stmt)
         kps = result.scalars().all()
@@ -790,6 +1217,8 @@ async def create_knowledge_point(course_id: int, payload: dict):
             is_key_point=1 if payload.get("is_key_point") else 0,
             is_difficult=1 if payload.get("is_difficult") else 0,
             is_exam_point=1 if payload.get("is_exam_point") else 0,
+            prerequisites_json=payload.get("prerequisites") or [],
+            relationships_json=payload.get("relationships") or [],
             sort_order=max_order + 1,
         )
         session.add(kp)
@@ -822,6 +1251,10 @@ async def update_knowledge_point(kp_id: int, payload: dict):
             kp.is_difficult = 1 if payload.get("is_difficult") else 0
         if "is_exam_point" in payload:
             kp.is_exam_point = 1 if payload.get("is_exam_point") else 0
+        if "prerequisites" in payload:
+            kp.prerequisites_json = payload.get("prerequisites") or []
+        if "relationships" in payload:
+            kp.relationships_json = payload.get("relationships") or []
         await session.commit()
         await session.refresh(kp)
         return ApiResponse(data=_kp_to_dict(kp), message="知识点已更新")
@@ -837,6 +1270,161 @@ async def delete_knowledge_point(kp_id: int):
         await session.delete(kp)
         await session.commit()
         return ApiResponse(message="知识点已删除")
+
+
+@router.post("/knowledge-points/batch-delete")
+async def batch_delete_knowledge_points(payload: dict):
+    """批量删除知识点"""
+    ids = payload.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "请选择要删除的知识点")
+    async for session in get_session():
+        stmt = select(KnowledgePointORM).where(KnowledgePointORM.id.in_(ids))
+        result = await session.execute(stmt)
+        kps = result.scalars().all()
+        for kp in kps:
+            await session.delete(kp)
+        await session.commit()
+        return ApiResponse(message=f"已删除 {len(kps)} 个知识点")
+
+
+@router.post("/knowledge-points/batch-update")
+async def batch_update_knowledge_points(payload: dict):
+    """批量更新知识点标签（重点/难点/考点）"""
+    ids = payload.get("ids", [])
+    updates = payload.get("updates", {})
+    if not ids or not updates:
+        raise HTTPException(400, "参数不完整")
+    async for session in get_session():
+        stmt = select(KnowledgePointORM).where(KnowledgePointORM.id.in_(ids))
+        result = await session.execute(stmt)
+        kps = result.scalars().all()
+        for kp in kps:
+            for field, value in updates.items():
+                if hasattr(kp, field):
+                    setattr(kp, field, value)
+        await session.commit()
+        return ApiResponse(message=f"已更新 {len(kps)} 个知识点")
+
+
+@router.get("/courses/{course_id}/knowledge-graph")
+async def get_knowledge_graph(course_id: int):
+    """获取课程知识图谱：所有知识点 + 前置关系（nodes + edges）"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        stmt = select(KnowledgePointORM).where(
+            KnowledgePointORM.course_id == course_id
+        ).order_by(KnowledgePointORM.layer, KnowledgePointORM.sort_order)
+        result = await session.execute(stmt)
+        kps = result.scalars().all()
+
+        name_map = {}  # 知识点名称 -> 知识点对象
+        nodes = []
+        for kp in kps:
+            d = _kp_to_dict(kp)
+            nodes.append(d)
+            name_map[kp.name.lower()] = d
+
+        edges = []
+        for kp in kps:
+            prereqs = kp.prerequisites_json or []
+            for prereq_name in prereqs:
+                target = name_map.get(prereq_name.strip().lower())
+                if target:
+                    edges.append({
+                        "source": prereq_name.strip(),
+                        "target": kp.name,
+                        "rel_type": "prerequisite",
+                        "label": "前置依赖",
+                    })
+
+            rels = kp.relationships_json or []
+            for rel in rels:
+                target_name = (rel.get("target") or "").strip()
+                rel_type = (rel.get("rel_type") or "依赖").strip()
+                if target_name and name_map.get(target_name.lower()):
+                    edges.append({
+                        "source": target_name,
+                        "target": kp.name,
+                        "rel_type": rel_type,
+                        "label": _REL_TYPE_CN.get(rel_type, rel_type),
+                    })
+
+        return ApiResponse(data={
+            "course_id": course_id,
+            "course_name": course.name,
+            "nodes": nodes,
+            "edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+        })
+
+
+@router.get("/courses/{course_id}/knowledge-points/relationship-suggestions")
+async def suggest_knowledge_point_relationships(course_id: int, kp_id: Optional[int] = None, query: Optional[str] = ""):
+    """获取知识点关系建议：返回课程内所有知识点，标注与指定知识点的已有关系，按章节/名称相关性排序"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+
+        stmt = select(KnowledgePointORM).where(
+            KnowledgePointORM.course_id == course_id
+        ).order_by(KnowledgePointORM.chapter, KnowledgePointORM.sort_order)
+        result = await session.execute(stmt)
+        all_kps = result.scalars().all()
+
+        current_kp = None
+        if kp_id:
+            current_kp = next((kp for kp in all_kps if kp.id == kp_id), None)
+
+        current_prereqs = set()
+        current_rels = set()
+        if current_kp:
+            current_prereqs = set(p.strip().lower() for p in (current_kp.prerequisites_json or []))
+            current_rels = set(r.get("target", "").strip().lower() for r in (current_kp.relationships_json or []))
+
+        suggestions = []
+        for kp in all_kps:
+            if current_kp and kp.id == current_kp.id:
+                continue
+            if query and query.strip():
+                if query.strip().lower() not in kp.name.lower():
+                    continue
+            name_lower = kp.name.lower()
+            already_prereq = name_lower in current_prereqs
+            already_rel = name_lower in current_rels
+            is_same_chapter = current_kp and kp.chapter == current_kp.chapter
+
+            score = 0
+            if is_same_chapter:
+                score += 3
+            if current_kp and current_kp.name and kp.name:
+                common_chars = len(set(current_kp.name) & set(kp.name))
+                if common_chars >= 2:
+                    score += 2
+                if (current_kp.name[:2] == kp.name[:2]):
+                    score += 1
+
+            suggestions.append({
+                "id": kp.id,
+                "name": kp.name,
+                "chapter": kp.chapter,
+                "layer": kp.layer,
+                "definition": (kp.definition or "")[:80],
+                "is_key_point": bool(kp.is_key_point),
+                "is_difficult": bool(kp.is_difficult),
+                "is_exam_point": bool(kp.is_exam_point),
+                "already_prerequisite": already_prereq,
+                "already_relationship": already_rel,
+                "same_chapter": is_same_chapter,
+                "relevance_score": score,
+            })
+
+        suggestions.sort(key=lambda s: (-s["relevance_score"], s["name"]))
+        return ApiResponse(data=suggestions)
 
 
 # ============================================================
@@ -924,6 +1512,28 @@ async def generate_mindmap(course_id: int, payload: dict):
         )
 
 
+async def _apply_template_defaults(plan_dict: dict, template_structure: dict | None, course_name: str, chapter: str) -> dict:
+    """将模板 defaults 回填到 plan_dict，缺失字段自动补齐（保证全表格可渲染）"""
+    if not template_structure:
+        return plan_dict
+    defaults = template_structure.get("defaults") or {}
+    merged = {**defaults, **plan_dict}
+    # 固定优先值
+    merged["course_name"] = course_name or merged.get("course_name", "")
+    merged["chapter"] = chapter or merged.get("chapter", "")
+    # stages 长度校验
+    if not merged.get("stages") or not isinstance(merged["stages"], list):
+        merged["stages"] = defaults.get("stages", [])
+    # key_points / difficult_points / homework 保证是 list
+    for k in ("key_points", "difficult_points", "homework"):
+        if not isinstance(merged.get(k), list):
+            merged[k] = defaults.get(k, [])
+    # 知识点出处表（knowledge_sources）默认保证为空列表
+    if "knowledge_sources" not in merged or not isinstance(merged["knowledge_sources"], list):
+        merged["knowledge_sources"] = defaults.get("knowledge_sources", [])
+    return merged
+
+
 # ============================================================
 # 教案生成
 # ============================================================
@@ -934,11 +1544,25 @@ async def generate_lesson_api(
     knowledge_points: str = Form(...),  # JSON字符串
     params: Optional[str] = Form(None),  # JSON字符串，可选
     chapter_id: Optional[int] = Form(None),  # 关联章节树节点
+    template_id: Optional[int] = Form(None),  # 教案模板ID
+    mode: Optional[str] = Form(None),  # 生成模式: "addie" 启用多智能体审议; 默认/其他 fast模式
 ):
     async for session in get_session():
         course = await session.get(CourseORM, course_id)
         if not course:
             raise HTTPException(404, "课程不存在")
+
+        # 加载模板结构（template_id or 默认）
+        template_structure: dict = {}
+        if template_id:
+            tmpl = await session.get(LessonTemplateORM, template_id)
+            if tmpl:
+                template_structure = tmpl.structure_json or {}
+        if not template_structure:
+            r = await session.execute(select(LessonTemplateORM).where(LessonTemplateORM.is_default == True).limit(1))
+            default_tmpl = r.scalars().first()
+            if default_tmpl:
+                template_structure = default_tmpl.structure_json or {}
 
         # 解析知识点
         try:
@@ -962,7 +1586,6 @@ async def generate_lesson_api(
             if kp_name:
                 ctx = await get_knowledge_point_context(session, course_id, kp_name)
                 if ctx:
-                    # 只保留关键段落，避免超出 token 限制
                     context_text = ctx["context"]
                     if len(context_text) > 1500:
                         context_text = context_text[:1500] + "..."
@@ -971,14 +1594,86 @@ async def generate_lesson_api(
                     )
         textbook_context = "\n\n---\n\n".join(textbook_context_parts)
 
-        # 生成教案
+        # 生成教案：捕获异常 → 结构化返回 + 模板骨架 fallback
+        plan_dict: dict = {}
+        addie_meta: dict = {}
+        error_code = None
+        error_message = None
         try:
-            plan = await generate_lesson(
-                course.name, chapter, kp_list, lesson_params,
-                textbook_context=textbook_context,
-            )
+            if (mode or "").strip().lower() == "addie":
+                # ADDIE 多智能体审议流程：4 阶段 (Analyze → Develop → Evaluate → Refine)
+                raw_lesson_dict, addie_meta = await generate_lesson_with_addie(
+                    course.name, chapter, kp_list, lesson_params,
+                    textbook_context=textbook_context,
+                    subject=course.subject or None,
+                )
+                # 复用 LessonPlan 模型做结构校验与字段标准化
+                from ..models.schemas import LessonPlan as _LessonPlan
+                plan = _LessonPlan(**raw_lesson_dict)
+                plan_dict = plan.model_dump()
+            else:
+                plan = await generate_lesson(
+                    course.name, chapter, kp_list, lesson_params,
+                    textbook_context=textbook_context,
+                    subject=course.subject or None,
+                )
+                plan_dict = plan.model_dump()
         except LLMError as e:
-            raise HTTPException(502, str(e))
+            error_code = "LLM_ERROR"
+            error_message = f"AI服务调用失败: {e}"
+        except Exception as e:
+            error_code = "GENERATE_UNKNOWN_ERROR"
+            error_message = f"教案生成异常: {type(e).__name__}: {e}"
+
+        # 生成失败 → 用模板默认结构兜底（保证用户拿到可编辑的完整骨架）
+        if error_code:
+            plan_dict = await _apply_template_defaults(plan_dict, template_structure, course.name, chapter)
+            # 构造知识出处
+            plan_dict["knowledge_sources"] = [
+                {"name": kp.get("name",""), "source": kp.get("source_pages","") or "教材原文", "description": kp.get("definition","")[:80]}
+                for kp in kp_list if kp.get("name")
+            ]
+            lesson = LessonORM(
+                course_id=course_id,
+                chapter_id=chapter_id,
+                chapter=chapter,
+                title=f"{course.name} - {chapter}（AI失败·模板骨架）",
+                plan_json=plan_dict,
+                params_json=lesson_params.model_dump(),
+            )
+            session.add(lesson)
+            await session.commit()
+            await session.refresh(lesson)
+            return ApiResponse(
+                success=False,
+                message=error_message or "AI生成失败，已使用模板生成骨架",
+                data={
+                    "error_code": error_code,
+                    "fallbacks": FALLBACK_ACTIONS,
+                    "fallback_used": "template_fallback",
+                    "id": lesson.id,
+                    "course_id": lesson.course_id,
+                    "chapter": lesson.chapter,
+                    "title": lesson.title,
+                    "plan": plan_dict,
+                    "params": lesson_params.model_dump(),
+                    "created_at": lesson.created_at.isoformat() if lesson.created_at else None,
+                    "updated_at": lesson.updated_at.isoformat() if lesson.updated_at else None,
+                },
+            )
+
+        # 正常：应用模板补齐
+        plan_dict = await _apply_template_defaults(plan_dict, template_structure, course.name, chapter)
+        # 补齐知识点出处（根据传入的KP + source_pages）
+        if not plan_dict.get("knowledge_sources"):
+            plan_dict["knowledge_sources"] = [
+                {"name": kp.get("name",""), "source": kp.get("source_pages","") or "教材原文", "description": kp.get("definition","")[:80]}
+                for kp in kp_list if kp.get("name")
+            ]
+
+        # 内容后置校验（借鉴 AgentCourseAssistant 的 ContentValidator）
+        # 仅产出 warnings/errors 提示，不阻塞入库
+        validation_result = validate_lesson(plan_dict)
 
         # 入库
         lesson = LessonORM(
@@ -986,7 +1681,7 @@ async def generate_lesson_api(
             chapter_id=chapter_id,
             chapter=chapter,
             title=f"{course.name} - {chapter}",
-            plan_json=plan.model_dump(),
+            plan_json=plan_dict,
             params_json=lesson_params.model_dump(),
         )
         session.add(lesson)
@@ -994,7 +1689,7 @@ async def generate_lesson_api(
         await session.refresh(lesson)
 
         return ApiResponse(
-            message="教案生成成功",
+            message="教案生成成功" + ("（ADDIE 多智能体审议）" if addie_meta else ""),
             data={
                 "id": lesson.id,
                 "course_id": lesson.course_id,
@@ -1002,6 +1697,8 @@ async def generate_lesson_api(
                 "title": lesson.title,
                 "plan": plan.model_dump(),
                 "params": lesson_params.model_dump(),
+                "validation": validation_result.to_dict(),
+                "addie_meta": addie_meta or None,
                 "created_at": lesson.created_at.isoformat() if lesson.created_at else None,
                 "updated_at": lesson.updated_at.isoformat() if lesson.updated_at else None,
             },
@@ -1011,14 +1708,93 @@ async def generate_lesson_api(
 # ============================================================
 # 教案管理
 # ============================================================
-@router.get("/courses/{course_id}/lessons")
-async def list_lessons(course_id: int):
+@router.post("/courses/{course_id}/lessons")
+async def create_lesson_manual(course_id: int, payload: dict):
+    """手动创建空白教案（供后端先建记录再调用 generate / fallback-template）"""
     async for session in get_session():
-        result = await session.execute(
-            select(LessonORM)
-            .where(LessonORM.course_id == course_id)
-            .order_by(LessonORM.updated_at.desc())
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        section_id = payload.get("section_id") or payload.get("chapter_id")
+        chapter_title = (payload.get("chapter") or payload.get("section") or payload.get("title") or "未命名章节").strip()[:200]
+        title = (payload.get("title") or chapter_title)[:200]
+        duration = int(payload.get("duration_minutes") or 45)
+        if section_id:
+            chapter_row = await session.get(ChapterORM, int(section_id))
+            if chapter_row:
+                chapter_title = chapter_row.name
+        lesson = LessonORM(
+            course_id=course_id,
+            chapter_id=int(section_id) if section_id else None,
+            chapter=chapter_title,
+            title=title,
+            plan_json={},
+            params_json={"duration_minutes": duration},
+            source_material_ids=[],
         )
+        session.add(lesson)
+        await session.commit()
+        await session.refresh(lesson)
+        return ApiResponse(message="教案记录已创建", data={
+            "id": lesson.id, "title": lesson.title, "chapter": lesson.chapter,
+            "chapter_id": lesson.chapter_id,
+        })
+
+
+@router.get("/lessons")
+async def list_all_lessons(keyword: str = "", date_from: str = "", date_to: str = ""):
+    """返回所有课程的教案列表（含课程名）"""
+    async for session in get_session():
+        query = (
+            select(LessonORM, CourseORM.name)
+            .join(CourseORM, LessonORM.course_id == CourseORM.id)
+        )
+        if keyword:
+            query = query.where(
+                LessonORM.title.ilike(f"%{keyword}%") |
+                LessonORM.chapter.ilike(f"%{keyword}%") |
+                CourseORM.name.ilike(f"%{keyword}%")
+            )
+        if date_from:
+            query = query.where(LessonORM.created_at >= date_from)
+        if date_to:
+            query = query.where(LessonORM.created_at <= f"{date_to}T23:59:59")
+        query = query.order_by(LessonORM.updated_at.desc())
+        result = await session.execute(query)
+        rows = result.all()
+        return ApiResponse(
+            data=[
+                {
+                    "id": l.id,
+                    "course_id": l.course_id,
+                    "course_name": course_name,
+                    "chapter": l.chapter,
+                    "title": l.title,
+                    "created_at": l.created_at.isoformat() if l.created_at else None,
+                    "updated_at": l.updated_at.isoformat() if l.updated_at else None,
+                }
+                for l, course_name in rows
+            ]
+        )
+
+
+@router.get("/courses/{course_id}/lessons")
+async def list_lessons(course_id: int, keyword: str = "", chapter: str = "", date_from: str = "", date_to: str = ""):
+    async for session in get_session():
+        query = select(LessonORM).where(LessonORM.course_id == course_id)
+        if keyword:
+            query = query.where(
+                LessonORM.title.ilike(f"%{keyword}%") |
+                LessonORM.chapter.ilike(f"%{keyword}%")
+            )
+        if chapter:
+            query = query.where(LessonORM.chapter == chapter)
+        if date_from:
+            query = query.where(LessonORM.created_at >= date_from)
+        if date_to:
+            query = query.where(LessonORM.created_at <= f"{date_to}T23:59:59")
+        query = query.order_by(LessonORM.updated_at.desc())
+        result = await session.execute(query)
         lessons = result.scalars().all()
         return ApiResponse(
             data=[
@@ -1057,15 +1833,88 @@ async def get_lesson(lesson_id: int):
 
 @router.put("/lessons/{lesson_id}")
 async def update_lesson(lesson_id: int, plan: dict):
-    """直接更新教案（用于编辑器修改后保存）"""
+    """直接更新教案（用于编辑器修改后保存），自动创建版本快照"""
     async for session in get_session():
         lesson = await session.get(LessonORM, lesson_id)
         if not lesson:
             raise HTTPException(404, "教案不存在")
+        # 创建版本快照
+        r = await session.execute(
+            select(func.max(LessonVersionORM.version_number)).where(
+                LessonVersionORM.lesson_id == lesson_id
+            )
+        )
+        max_ver = r.scalar() or 0
+        snapshot = LessonVersionORM(
+            lesson_id=lesson_id,
+            version_number=max_ver + 1,
+            plan_json=lesson.plan_json,
+            description=f"v{max_ver + 1}",
+        )
+        session.add(snapshot)
         lesson.plan_json = plan
         lesson.updated_at = datetime.utcnow()
         await session.commit()
-        return ApiResponse(message="教案已保存")
+        return ApiResponse(message="教案已保存", data={"version": max_ver + 1})
+
+
+@router.post("/lessons/{lesson_id}/evaluate")
+async def evaluate_lesson_api(lesson_id: int):
+    """对已生成教案进行独立质量评估
+
+    借鉴 instructional_agents/evaluate.py 的多指标打分+双视角评审机制：
+    - 6 维度细粒度打分（结构/目标/重难点/学情/教学法/可执行性）
+    - 教务专家视角 + 学生代表视角 双重评审
+    返回 JSON 评估报告。
+    """
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        plan_dict = lesson.plan_json or {}
+        if not plan_dict.get("stages"):
+            raise HTTPException(400, "教案内容为空，无法评估")
+        course = await session.get(CourseORM, lesson.course_id)
+        course_name = course.name if course else "未命名课程"
+
+        # 拉取本节关联知识点（用于交叉校验目标达成度）
+        kp_result = await session.execute(
+            select(KnowledgePointORM)
+            .where(KnowledgePointORM.course_id == lesson.course_id)
+            .where(KnowledgePointORM.chapter == lesson.chapter)
+        )
+        kp_rows = kp_result.scalars().all()
+        knowledge_points = [
+            {"name": k.name, "source_pages": k.source_pages or "", "definition": k.definition or ""}
+            for k in kp_rows
+        ] or []
+
+        try:
+            subject = (course.subject or None) if course else None
+            result = await evaluate_lesson_independent(
+                course_name=course_name,
+                chapter=lesson.chapter,
+                lesson_dict=plan_dict,
+                knowledge_points=knowledge_points,
+                subject=subject,
+            )
+        except LLMError as e:
+            return ApiResponse(
+                success=False,
+                message=f"AI服务调用失败: {e}",
+                data={"error_code": "LLM_ERROR", "fallbacks": FALLBACK_ACTIONS},
+            )
+        except Exception as e:
+            return ApiResponse(
+                success=False,
+                message=f"评估异常: {type(e).__name__}: {e}",
+                data={"error_code": "EVALUATE_UNKNOWN_ERROR", "fallbacks": FALLBACK_ACTIONS},
+            )
+
+        return ApiResponse(
+            message=f"教案评估完成（总分 {result.get('overall_score', 0):.1f}/5.0）",
+            data=result,
+        )
 
 
 @router.delete("/lessons/{lesson_id}")
@@ -1077,6 +1926,22 @@ async def delete_lesson(lesson_id: int):
         await session.delete(lesson)
         await session.commit()
         return ApiResponse(message="教案已删除")
+
+
+@router.post("/lessons/batch-delete")
+async def batch_delete_lessons(payload: dict):
+    """批量删除教案"""
+    ids = payload.get("ids", [])
+    if not ids:
+        raise HTTPException(400, "请选择要删除的教案")
+    async for session in get_session():
+        stmt = select(LessonORM).where(LessonORM.id.in_(ids))
+        result = await session.execute(stmt)
+        lessons = result.scalars().all()
+        for lesson in lessons:
+            await session.delete(lesson)
+        await session.commit()
+        return ApiResponse(message=f"已删除 {len(lessons)} 个教案")
 
 
 # ============================================================
@@ -1213,6 +2078,38 @@ async def download_ppt_file(ppt_id: int):
 # ============================================================
 # 对话修改
 # ============================================================
+@router.get("/courses/{course_id}/chat-messages")
+async def list_course_chat_messages(course_id: int, limit: int = 200, chapter_id: Optional[int] = None):
+    """获取指定课程的聊天记录（可按章节过滤）
+    chapter_id 为 null 或不传时返回课程级对话；传具体值时返回该章节的对话
+    返回按时间正序的 [{id, role, content, created_at, metadata}] 列表"""
+    async for session in get_session():
+        stmt = (
+            select(ChatMessageORM)
+            .where(ChatMessageORM.course_id == course_id)
+        )
+        if chapter_id is not None:
+            stmt = stmt.where(ChatMessageORM.chapter_id == chapter_id)
+        else:
+            # 不传 chapter_id 时返回 chapter_id 为 NULL 的课程级对话
+            stmt = stmt.where(ChatMessageORM.chapter_id.is_(None))
+        stmt = stmt.order_by(ChatMessageORM.created_at.asc(), ChatMessageORM.id.asc()).limit(min(max(limit, 1), 500))
+        result = await session.execute(stmt)
+        msgs = result.scalars().all()
+        return ApiResponse(
+            data=[
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                    "metadata": m.metadata_json or {},
+                }
+                for m in msgs
+            ]
+        )
+
+
 @router.post("/lessons/{lesson_id}/chat")
 async def chat_modify_lesson(lesson_id: int, payload: ChatRequest):
     """通过自然语言修改教案"""
@@ -1225,6 +2122,7 @@ async def chat_modify_lesson(lesson_id: int, payload: ChatRequest):
         session.add(
             ChatMessageORM(
                 course_id=lesson.course_id,
+                chapter_id=payload.chapter_id,
                 role="user",
                 content=payload.message,
             )
@@ -1263,6 +2161,7 @@ async def chat_modify_lesson(lesson_id: int, payload: ChatRequest):
         session.add(
             ChatMessageORM(
                 course_id=lesson.course_id,
+                chapter_id=payload.chapter_id,
                 role="assistant",
                 content=response_text,
                 metadata_json={"type": result["type"]},
@@ -1330,6 +2229,9 @@ async def export_lesson(lesson_id: int, fmt: str):
                 },
             )
         else:  # pptx — 使用默认参数生成教学PPT
+            # 获取课程以读取学科(用于注入学科领域规则)
+            course = await session.get(CourseORM, lesson.course_id)
+            course_subject = course.subject if course else ""
             # 获取知识点
             stmt = (
                 select(KnowledgePointORM)
@@ -1362,6 +2264,7 @@ async def export_lesson(lesson_id: int, fmt: str):
                     content_density="moderate",
                     image_style="icons",
                     textbook_context=textbook_context,
+                    subject=course_subject or None,
                 )
                 content = export_teaching_pptx(slide_data, style="cyan_ink")
             except Exception as e:
@@ -1385,13 +2288,15 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
         "style": "academic|cyan_ink|cute_cartoon|formal|minimal",
         "content_density": "detailed|moderate|concise",
         "image_style": "none|icons|rich",
-        "style_custom": "用户自定义风格描述（可选）"
+        "style_custom": "用户自定义风格描述（可选）",
+        "template_analysis": "模板分析结果（可选），包含 layout_patterns 和 bg_image_path"
     }
     """
     style = payload.get("style", "cyan_ink")
     content_density = payload.get("content_density", "moderate")
     image_style = payload.get("image_style", "icons")
     style_custom = payload.get("style_custom", "")
+    template_analysis = payload.get("template_analysis")
 
     async for session in get_session():
         lesson = await session.get(LessonORM, lesson_id)
@@ -1401,6 +2306,10 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
             plan = LessonPlan(**lesson.plan_json)
         except Exception as e:
             raise HTTPException(500, f"教案数据损坏: {e}")
+
+        # 获取课程以读取学科(用于注入学科领域规则)
+        course = await session.get(CourseORM, lesson.course_id)
+        course_subject = course.subject if course else ""
 
         # 获取知识点
         stmt = (
@@ -1435,10 +2344,44 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
                 image_style=image_style,
                 style_custom=style_custom,
                 textbook_context=textbook_context,
+                subject=course_subject or None,
+                template_analysis=template_analysis,
             )
-            content = export_teaching_pptx(slide_data, style=style)
+            content = export_teaching_pptx(slide_data, style=style, template_analysis=template_analysis)
+        except LLMError as e:
+            try:
+                slide_data = await generate_ppt_content(
+                    plan=plan,
+                    knowledge_points=knowledge_points,
+                    style="minimal",
+                    content_density="concise",
+                    image_style="none",
+                    style_custom="",
+                    textbook_context=textbook_context,
+                    subject=course_subject or None,
+                    template_analysis=template_analysis,
+                )
+                content = export_teaching_pptx(slide_data, style="minimal", template_analysis=template_analysis)
+            except Exception as e2:
+                return ApiResponse(
+                    success=False,
+                    message=f"PPT AI生成失败，且降级生成也失败: {e2}",
+                    data={
+                        "error_code": "PPT_LLM_AND_FALLBACK_FAILED",
+                        "fallbacks": FALLBACK_ACTIONS,
+                        "detail_primary": str(e),
+                        "detail_fallback": str(e2),
+                    }
+                ).model_dump()
         except Exception as e:
-            raise HTTPException(500, f"PPT生成失败: {e}")
+            return ApiResponse(
+                success=False,
+                message=f"PPT生成失败: {e}",
+                data={
+                    "error_code": "PPT_GENERATE_ERROR",
+                    "fallbacks": FALLBACK_ACTIONS,
+                }
+            ).model_dump()
 
         # 保存PPT记录
         slide_count = 0
@@ -1446,6 +2389,10 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
             slides = slide_data.get("slides", [])
             if isinstance(slides, list):
                 slide_count = len(slides)
+
+        # 内容后置校验（借鉴 AgentCourseAssistant 的 ContentValidator）
+        # 校验结果通过 HTTP header 返回，不阻塞文件下载
+        ppt_validation = validate_ppt(slide_data) if isinstance(slide_data, dict) else None
 
         ppt_record = PptRecordORM(
             course_id=lesson.course_id,
@@ -1470,13 +2417,22 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
             safe_title = f"lesson_{lesson_id}"
         ascii_fallback = f"lesson_{lesson_id}"
         filename_encoded = urllib.parse.quote(f"{safe_title}.pptx")
-
+        # 将校验结果通过 header 返回（前端可读取 X-Ppt-Validation）
+        ppt_validation_header = ""
+        if ppt_validation is not None:
+            try:
+                ppt_validation_header = urllib.parse.quote(
+                    json.dumps(ppt_validation.to_dict(), ensure_ascii=False)
+                )
+            except Exception:
+                pass
         return Response(
             content=content,
             media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             headers={
                 "Content-Disposition": f"attachment; filename=\"{ascii_fallback}.pptx\"; filename*=UTF-8''{filename_encoded}",
                 "X-Ppt-Record-Id": str(ppt_record.id),
+                "X-Ppt-Validation": ppt_validation_header or "{}",
             },
         )
 
@@ -1485,14 +2441,21 @@ async def export_lesson_ppt(lesson_id: int, payload: dict):
 # PPT记录管理
 # ============================================================
 @router.get("/courses/{course_id}/ppt-records")
-async def list_ppt_records(course_id: int):
+async def list_ppt_records(course_id: int, keyword: str = "", style: str = "", content_density: str = ""):
     """列出课程的PPT生成记录"""
     async for session in get_session():
-        result = await session.execute(
-            select(PptRecordORM)
-            .where(PptRecordORM.course_id == course_id)
-            .order_by(PptRecordORM.created_at.desc())
-        )
+        query = select(PptRecordORM).where(PptRecordORM.course_id == course_id)
+        if keyword:
+            query = query.where(
+                PptRecordORM.title.ilike(f"%{keyword}%") |
+                PptRecordORM.chapter.ilike(f"%{keyword}%")
+            )
+        if style:
+            query = query.where(PptRecordORM.style == style)
+        if content_density:
+            query = query.where(PptRecordORM.content_density == content_density)
+        query = query.order_by(PptRecordORM.created_at.desc())
+        result = await session.execute(query)
         records = result.scalars().all()
         return ApiResponse(
             data=[
@@ -1540,6 +2503,25 @@ async def get_ppt_record(record_id: int):
         )
 
 
+@router.put("/ppt-records/{record_id}/slides")
+async def update_ppt_slides(record_id: int, payload: dict):
+    """更新PPT幻灯片数据（用户编辑后保存）"""
+    async for session in get_session():
+        r = await session.get(PptRecordORM, record_id)
+        if not r:
+            raise HTTPException(404, "PPT记录不存在")
+
+        slide_data = payload.get("slide_data")
+        if not slide_data or not isinstance(slide_data, dict):
+            raise HTTPException(400, "slide_data 必须是非空 JSON 对象")
+
+        r.slide_data = slide_data
+        if "slides" in slide_data:
+            r.slide_count = len(slide_data["slides"])
+        await session.commit()
+        return ApiResponse(message="幻灯片已更新")
+
+
 @router.delete("/ppt-records/{record_id}")
 async def delete_ppt_record(record_id: int):
     """删除PPT记录"""
@@ -1582,6 +2564,567 @@ async def download_ppt(record_id: int):
             headers={
                 "Content-Disposition": f"attachment; filename=\"{ascii_fallback}.pptx\"; filename*=UTF-8''{filename_encoded}"
             },
+        )
+
+
+# ============================================================
+# PPT预览
+# ============================================================
+@router.get("/ppt-records/{record_id}/preview")
+async def preview_ppt(record_id: int):
+    """获取PPT的HTML预览"""
+    async for session in get_session():
+        r = await session.get(PptRecordORM, record_id)
+        if not r:
+            raise HTTPException(404, "PPT记录不存在")
+
+        slide_data = r.slide_data
+        if not slide_data:
+            raise HTTPException(400, "PPT数据为空，请重新生成")
+
+        try:
+            html = generate_ppt_preview_html(slide_data, style=r.style or "academic")
+        except Exception as e:
+            raise HTTPException(500, f"PPT预览生成失败: {e}")
+
+        return Response(
+            content=html,
+            media_type="text/html; charset=utf-8",
+        )
+
+
+@router.post("/ppt-records/{record_id}/regenerate")
+async def regenerate_ppt(record_id: int, payload: dict):
+    """基于已有PPT记录重新生成（支持修改参数）
+
+    请求体：
+    {
+        "style": "academic|cyan_ink|cute_cartoon|formal|minimal",
+        "content_density": "detailed|moderate|concise",
+        "image_style": "none|icons|rich",
+        "style_custom": "用户自定义风格描述（可选）"
+    }
+    """
+    style = payload.get("style", "")
+    content_density = payload.get("content_density", "")
+    image_style = payload.get("image_style", "")
+    style_custom = payload.get("style_custom", "")
+
+    async for session in get_session():
+        r = await session.get(PptRecordORM, record_id)
+        if not r:
+            raise HTTPException(404, "PPT记录不存在")
+
+        if not r.lesson_id:
+            raise HTTPException(400, "该PPT记录没有关联教案，无法重新生成")
+
+        lesson = await session.get(LessonORM, r.lesson_id)
+        if not lesson:
+            raise HTTPException(404, "关联教案不存在")
+
+        try:
+            plan = LessonPlan(**lesson.plan_json)
+        except Exception as e:
+            raise HTTPException(500, f"教案数据损坏: {e}")
+
+        course = await session.get(CourseORM, r.course_id)
+        course_subject = course.subject if course else ""
+
+        # 获取知识点
+        stmt = (
+            select(KnowledgePointORM)
+            .where(KnowledgePointORM.course_id == r.course_id)
+            .order_by(KnowledgePointORM.sort_order)
+        )
+        result = await session.execute(stmt)
+        kps = result.scalars().all()
+        knowledge_points = [
+            {
+                "name": k.name,
+                "definition": k.definition,
+                "source_pages": k.source_pages or "",
+                "layer": k.layer,
+                "is_key_point": bool(k.is_key_point),
+                "is_difficult": bool(k.is_difficult),
+                "is_exam_point": bool(k.is_exam_point),
+            }
+            for k in kps
+        ]
+
+        textbook_context = await _build_textbook_context(session, r.course_id, knowledge_points)
+
+        # 使用新参数或保留原参数
+        final_style = style or r.style
+        final_density = content_density or r.content_density
+        final_image = image_style or r.image_style
+        final_custom = style_custom if style_custom is not None else (r.style_custom or "")
+
+        try:
+            slide_data = await generate_ppt_content(
+                plan=plan,
+                knowledge_points=knowledge_points,
+                style=final_style,
+                content_density=final_density,
+                image_style=final_image,
+                style_custom=final_custom,
+                textbook_context=textbook_context,
+                subject=course_subject or None,
+            )
+            content = export_teaching_pptx(slide_data, style=final_style)
+        except LLMError as e:
+            try:
+                slide_data = await generate_ppt_content(
+                    plan=plan,
+                    knowledge_points=knowledge_points,
+                    style="minimal",
+                    content_density="concise",
+                    image_style="none",
+                    style_custom="",
+                    textbook_context=textbook_context,
+                    subject=course_subject or None,
+                )
+                content = export_teaching_pptx(slide_data, style="minimal")
+            except Exception as e2:
+                return ApiResponse(
+                    success=False,
+                    message=f"PPT重新生成失败，且降级生成也失败: {e2}",
+                    data={
+                        "error_code": "PPT_LLM_AND_FALLBACK_FAILED",
+                        "fallbacks": FALLBACK_ACTIONS,
+                        "detail_primary": str(e),
+                        "detail_fallback": str(e2),
+                    }
+                ).model_dump()
+        except Exception as e:
+            return ApiResponse(
+                success=False,
+                message=f"PPT重新生成失败: {e}",
+                data={"error_code": "PPT_GENERATE_ERROR", "fallbacks": FALLBACK_ACTIONS}
+            ).model_dump()
+
+        # 更新记录
+        slide_count = 0
+        if slide_data and isinstance(slide_data, dict):
+            slides = slide_data.get("slides", [])
+            if isinstance(slides, list):
+                slide_count = len(slides)
+
+        r.style = final_style
+        r.content_density = final_density
+        r.image_style = final_image
+        r.style_custom = final_custom
+        r.slide_count = slide_count
+        r.slide_data = slide_data
+        await session.commit()
+
+        safe_title = r.title or f"ppt_{record_id}"
+        safe_title = "".join(c for c in safe_title if c.isalnum() or c in "_-")
+        if not safe_title:
+            safe_title = f"ppt_{record_id}"
+        ascii_fallback = f"ppt_{record_id}"
+        filename_encoded = urllib.parse.quote(f"{safe_title}.pptx")
+
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            headers={
+                "Content-Disposition": f"attachment; filename=\"{ascii_fallback}.pptx\"; filename*=UTF-8''{filename_encoded}",
+                "X-Ppt-Record-Id": str(r.id),
+            },
+        )
+
+
+@router.put("/ppt-records/{record_id}/reorder")
+async def reorder_ppt_slides(record_id: int, payload: dict):
+    """调整PPT幻灯片顺序
+
+    请求体：
+    {
+        "slide_order": [2, 0, 1, 3, ...]  # 新的幻灯片索引顺序
+    }
+    """
+    slide_order = payload.get("slide_order", [])
+
+    async for session in get_session():
+        r = await session.get(PptRecordORM, record_id)
+        if not r:
+            raise HTTPException(404, "PPT记录不存在")
+
+        slide_data = r.slide_data
+        if not slide_data or not isinstance(slide_data, dict):
+            raise HTTPException(400, "PPT数据为空")
+
+        slides = slide_data.get("slides", [])
+        if not slides:
+            raise HTTPException(400, "幻灯片列表为空")
+
+        if len(slide_order) != len(slides):
+            raise HTTPException(400, f"幻灯片顺序长度({len(slide_order)})与当前数量({len(slides)})不匹配")
+
+        if sorted(slide_order) != list(range(len(slides))):
+            raise HTTPException(400, "幻灯片顺序索引无效，必须包含0到N-1的所有整数")
+
+        reordered = [slides[i] for i in slide_order]
+        slide_data["slides"] = reordered
+        r.slide_data = slide_data
+        await session.commit()
+
+        return ApiResponse(
+            message="幻灯片顺序已更新",
+            data={"slide_count": len(reordered)}
+        )
+
+
+# ============================================================
+# PPT模板管理
+# ============================================================
+@router.get("/courses/{course_id}/ppt-templates")
+async def list_ppt_templates(course_id: int):
+    """列出课程的PPT模板"""
+    async for session in get_session():
+        result = await session.execute(
+            select(PptTemplateORM)
+            .where(PptTemplateORM.course_id == course_id)
+            .order_by(PptTemplateORM.created_at.desc())
+        )
+        templates = result.scalars().all()
+        return ApiResponse(
+            data=[
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "source_type": t.source_type,
+                    "style": t.style,
+                    "content_density": t.content_density,
+                    "image_style": t.image_style,
+                    "style_custom": t.style_custom or "",
+                    "has_analysis": t.has_analysis,
+                    "layout_patterns": t.layout_patterns if t.has_analysis else None,
+                    "bg_image_path": t.bg_image_path if t.has_analysis else "",
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                }
+                for t in templates
+            ]
+        )
+
+
+@router.post("/courses/{course_id}/ppt-templates")
+async def create_ppt_template(course_id: int, payload: dict):
+    """创建PPT模板"""
+    name = payload.get("name", "默认模板")
+    style = payload.get("style", "cyan_ink")
+    content_density = payload.get("content_density", "moderate")
+    image_style = payload.get("image_style", "icons")
+    style_custom = payload.get("style_custom", "")
+
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+
+        template = PptTemplateORM(
+            course_id=course_id,
+            name=name,
+            style=style,
+            content_density=content_density,
+            image_style=image_style,
+            style_custom=style_custom,
+        )
+        session.add(template)
+        await session.commit()
+        await session.refresh(template)
+
+        return ApiResponse(
+            message="PPT模板已创建",
+            data={
+                "id": template.id,
+                "name": template.name,
+                "style": template.style,
+                "content_density": template.content_density,
+                "image_style": template.image_style,
+                "style_custom": template.style_custom or "",
+            }
+        )
+
+
+@router.post("/courses/{course_id}/ppt-templates/upload")
+async def upload_ppt_template(course_id: int, file: UploadFile = File(...)):
+    """上传PPTX文件作为模板，并自动分析"""
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext != ".pptx":
+        raise HTTPException(400, "仅支持 .pptx 格式的PPT模板文件")
+
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+
+        content_bytes = await file.read()
+        stored_path = await save_upload(content_bytes, file.filename or "template.pptx", course_id)
+        name = Path(file.filename).stem[:50]
+
+        template = PptTemplateORM(
+            course_id=course_id,
+            name=name,
+            source_type="uploaded_file",
+            stored_path=str(stored_path),
+        )
+        session.add(template)
+        await session.commit()
+        await session.refresh(template)
+
+        return ApiResponse(
+            message="PPT模板已上传",
+            data={
+                "id": template.id,
+                "name": template.name,
+                "source_type": "uploaded_file",
+                "stored_path": str(stored_path),
+                "created_at": template.created_at.isoformat() if template.created_at else None,
+            }
+        )
+
+
+@router.post("/ppt-templates/{template_id}/analyze")
+async def analyze_ppt_template(template_id: int):
+    """分析上传的PPT模板，提取排版习惯和背景图"""
+    async for session in get_session():
+        template = await session.get(PptTemplateORM, template_id)
+        if not template:
+            raise HTTPException(404, "模板不存在")
+        if template.source_type != "uploaded_file":
+            raise HTTPException(400, "只有上传的模板文件才能分析")
+        if not template.stored_path:
+            raise HTTPException(400, "模板文件路径不存在")
+
+        pptx_path = Path(template.stored_path)
+        if not pptx_path.exists():
+            raise HTTPException(404, "模板文件不存在，可能已被删除")
+
+        from ..agents.ppt_agent import analyze_pptx_template
+        try:
+            analysis = await analyze_pptx_template(str(pptx_path))
+        except Exception as e:
+            raise HTTPException(500, f"模板分析失败: {e}")
+
+        template.layout_patterns = analysis.get("layout_patterns", {})
+        template.bg_image_path = analysis.get("bg_image_path", "")
+        template.has_analysis = True
+        await session.commit()
+
+        return ApiResponse(
+            message="PPT模板分析完成",
+            data={
+                "id": template.id,
+                "name": template.name,
+                "layout_patterns": template.layout_patterns,
+                "bg_image_path": template.bg_image_path,
+                "has_analysis": True,
+            }
+        )
+
+
+@router.put("/ppt-templates/{template_id}")
+async def update_ppt_template(template_id: int, payload: dict):
+    """更新PPT模板"""
+    async for session in get_session():
+        template = await session.get(PptTemplateORM, template_id)
+        if not template:
+            raise HTTPException(404, "模板不存在")
+
+        if "name" in payload:
+            template.name = payload["name"]
+        if "style" in payload:
+            template.style = payload["style"]
+        if "content_density" in payload:
+            template.content_density = payload["content_density"]
+        if "image_style" in payload:
+            template.image_style = payload["image_style"]
+        if "style_custom" in payload:
+            template.style_custom = payload["style_custom"]
+
+        await session.commit()
+        return ApiResponse(message="PPT模板已更新")
+
+
+@router.delete("/ppt-templates/{template_id}")
+async def delete_ppt_template(template_id: int):
+    """删除PPT模板"""
+    async for session in get_session():
+        template = await session.get(PptTemplateORM, template_id)
+        if not template:
+            raise HTTPException(404, "模板不存在")
+        await session.delete(template)
+        await session.commit()
+        return ApiResponse(message="PPT模板已删除")
+
+
+@router.post("/ppt-templates/{template_id}/apply")
+async def apply_ppt_template(template_id: int, lesson_id: int = None):
+    """应用PPT模板到教案
+
+    参数：
+        template_id: 模板ID
+        lesson_id: 可选，指定教案ID，如果不指定则返回模板参数
+    """
+    async for session in get_session():
+        template = await session.get(PptTemplateORM, template_id)
+        if not template:
+            raise HTTPException(404, "模板不存在")
+
+        result = {
+            "style": template.style,
+            "content_density": template.content_density,
+            "image_style": template.image_style,
+            "style_custom": template.style_custom or "",
+        }
+
+        if lesson_id:
+            lesson = await session.get(LessonORM, lesson_id)
+            if not lesson:
+                raise HTTPException(404, "教案不存在")
+            result["lesson_id"] = lesson_id
+
+        return ApiResponse(data=result)
+
+
+# ============================================================
+# 批量PPT生成
+# ============================================================
+@router.post("/courses/{course_id}/batch-ppt")
+async def batch_generate_ppt(course_id: int, payload: dict):
+    """批量生成多个章节的PPT
+
+    请求体：
+    {
+        "lesson_ids": [1, 2, 3],  # 要生成PPT的教案ID列表
+        "style": "academic|cyan_ink|cute_cartoon|formal|minimal",
+        "content_density": "detailed|moderate|concise",
+        "image_style": "none|icons|rich",
+        "style_custom": "自定义风格描述（可选）",
+        "template_id": null  # 可选，使用模板ID
+    }
+    """
+    lesson_ids = payload.get("lesson_ids", [])
+    style = payload.get("style", "cyan_ink")
+    content_density = payload.get("content_density", "moderate")
+    image_style = payload.get("image_style", "icons")
+    style_custom = payload.get("style_custom", "")
+    template_id = payload.get("template_id")
+
+    if not lesson_ids:
+        raise HTTPException(400, "请至少选择一个教案")
+
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+
+        # 如果指定了模板，从模板加载参数
+        if template_id:
+            template = await session.get(PptTemplateORM, template_id)
+            if template:
+                style = template.style
+                content_density = template.content_density
+                image_style = template.image_style
+                style_custom = template.style_custom or ""
+
+        course_subject = course.subject or ""
+
+        results = []
+        errors = []
+
+        for lesson_id in lesson_ids:
+            lesson = await session.get(LessonORM, lesson_id)
+            if not lesson:
+                errors.append({"lesson_id": lesson_id, "error": "教案不存在"})
+                continue
+
+            try:
+                plan = LessonPlan(**lesson.plan_json)
+            except Exception as e:
+                errors.append({"lesson_id": lesson_id, "error": f"教案数据损坏: {e}"})
+                continue
+
+            # 获取知识点
+            stmt = (
+                select(KnowledgePointORM)
+                .where(KnowledgePointORM.course_id == course_id)
+                .order_by(KnowledgePointORM.sort_order)
+            )
+            result = await session.execute(stmt)
+            kps = result.scalars().all()
+            knowledge_points = [
+                {
+                    "name": k.name,
+                    "definition": k.definition,
+                    "source_pages": k.source_pages or "",
+                    "layer": k.layer,
+                    "is_key_point": bool(k.is_key_point),
+                    "is_difficult": bool(k.is_difficult),
+                    "is_exam_point": bool(k.is_exam_point),
+                }
+                for k in kps
+            ]
+
+            textbook_context = await _build_textbook_context(session, course_id, knowledge_points)
+
+            try:
+                slide_data = await generate_ppt_content(
+                    plan=plan,
+                    knowledge_points=knowledge_points,
+                    style=style,
+                    content_density=content_density,
+                    image_style=image_style,
+                    style_custom=style_custom,
+                    textbook_context=textbook_context,
+                    subject=course_subject or None,
+                )
+                ppt_bytes = export_teaching_pptx(slide_data, style=style)
+            except Exception as e:
+                errors.append({"lesson_id": lesson_id, "chapter": plan.chapter, "error": str(e)})
+                continue
+
+            slide_count = 0
+            if slide_data and isinstance(slide_data, dict):
+                slides = slide_data.get("slides", [])
+                if isinstance(slides, list):
+                    slide_count = len(slides)
+
+            ppt_record = PptRecordORM(
+                course_id=course_id,
+                lesson_id=lesson_id,
+                chapter=plan.chapter,
+                title=f"{plan.course_name} - {plan.chapter}",
+                style=style,
+                content_density=content_density,
+                image_style=image_style,
+                style_custom=style_custom,
+                slide_count=slide_count,
+                slide_data=slide_data,
+            )
+            session.add(ppt_record)
+            await session.flush()
+
+            results.append({
+                "lesson_id": lesson_id,
+                "chapter": plan.chapter,
+                "record_id": ppt_record.id,
+                "slide_count": slide_count,
+                "title": f"{plan.course_name} - {plan.chapter}",
+                "style": style,
+            })
+
+        await session.commit()
+
+        return ApiResponse(
+            message=f"批量生成完成：成功 {len(results)} 个，失败 {len(errors)} 个",
+            data={
+                "success_count": len(results),
+                "error_count": len(errors),
+                "results": results,
+                "errors": errors if errors else None,
+            }
         )
 
 
@@ -1713,3 +3256,1739 @@ async def test_llm_settings(payload: LLMSettingsUpdate):
 
 # 引入settings用于llm-test
 from ..config import settings  # noqa: E402
+
+
+# ============================================================
+# 教案模板库 CRUD
+# ============================================================
+@router.get("/lesson-templates")
+async def list_lesson_templates(course_id: Optional[int] = None):
+    """列出教案模板：全局模板(course_id is null) + 指定课程私有模板"""
+    async for session in get_session():
+        stmt = select(LessonTemplateORM).order_by(
+            LessonTemplateORM.is_default.desc(),
+            LessonTemplateORM.created_at.desc(),
+        )
+        if course_id:
+            stmt = stmt.where(
+                (LessonTemplateORM.course_id.is_(None)) | (LessonTemplateORM.course_id == course_id)
+            )
+        else:
+            stmt = stmt.where(LessonTemplateORM.course_id.is_(None))
+        result = await session.execute(stmt)
+        tpls = result.scalars().all()
+        return ApiResponse(
+            data=[
+                {
+                    "id": t.id,
+                    "course_id": t.course_id,
+                    "name": t.name,
+                    "description": t.description,
+                    "structure_json": t.structure_json,
+                    "is_default": t.is_default,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+                }
+                for t in tpls
+            ]
+        )
+
+
+@router.post("/lesson-templates")
+async def create_lesson_template(payload: LessonTemplateCreate):
+    """新建教案模板"""
+    async for session in get_session():
+        # 若设为默认，先取消其他默认
+        if payload.is_default:
+            r = await session.execute(select(LessonTemplateORM).where(LessonTemplateORM.is_default == True))
+            for old in r.scalars().all():
+                old.is_default = False
+        tpl = LessonTemplateORM(
+            course_id=payload.course_id,
+            name=payload.name,
+            description=payload.description,
+            structure_json=payload.structure_json or {},
+            is_default=payload.is_default,
+        )
+        session.add(tpl)
+        await session.commit()
+        await session.refresh(tpl)
+        return ApiResponse(
+            message="模板已创建",
+            data={"id": tpl.id, "name": tpl.name, "is_default": tpl.is_default},
+        )
+
+
+@router.put("/lesson-templates/{template_id}")
+async def update_lesson_template(template_id: int, payload: LessonTemplateUpdate):
+    """更新教案模板"""
+    async for session in get_session():
+        tpl = await session.get(LessonTemplateORM, template_id)
+        if not tpl:
+            raise HTTPException(404, "模板不存在")
+        if payload.name is not None:
+            tpl.name = payload.name[:100] or tpl.name
+        if payload.description is not None:
+            tpl.description = payload.description
+        if payload.structure_json is not None:
+            tpl.structure_json = payload.structure_json
+        if payload.is_default is not None and payload.is_default != tpl.is_default:
+            if payload.is_default:
+                r = await session.execute(select(LessonTemplateORM).where(LessonTemplateORM.is_default == True))
+                for old in r.scalars().all():
+                    old.is_default = False
+                tpl.is_default = True
+            else:
+                # 取消当前默认 → 需要重新选一个全局默认
+                if tpl.is_default:
+                    tpl.is_default = False
+                    r2 = await session.execute(
+                        select(LessonTemplateORM)
+                        .where(LessonTemplateORM.course_id.is_(None), LessonTemplateORM.id != template_id)
+                        .order_by(LessonTemplateORM.created_at.asc())
+                        .limit(1)
+                    )
+                    other = r2.scalars().first()
+                    if other:
+                        other.is_default = True
+        await session.commit()
+        return ApiResponse(message="模板已更新", data={"id": tpl.id, "name": tpl.name})
+
+
+@router.delete("/lesson-templates/{template_id}")
+async def delete_lesson_template(template_id: int):
+    """删除教案模板（默认模板不允许删除）"""
+    async for session in get_session():
+        tpl = await session.get(LessonTemplateORM, template_id)
+        if not tpl:
+            raise HTTPException(404, "模板不存在")
+        if tpl.is_default:
+            return ApiResponse(
+                success=False,
+                message="默认模板不允许删除，请先将其他模板设为默认后重试",
+                data={"error_code": "DEFAULT_TEMPLATE_PROTECTED", "fallbacks": ["set_other_default"]},
+            )
+        await session.delete(tpl)
+        await session.commit()
+        return ApiResponse(message="模板已删除", data={"id": template_id})
+
+
+@router.post("/lesson-templates/{template_id}/set-default")
+async def set_template_default(template_id: int):
+    """设为默认模板"""
+    async for session in get_session():
+        tpl = await session.get(LessonTemplateORM, template_id)
+        if not tpl:
+            raise HTTPException(404, "模板不存在")
+        r = await session.execute(select(LessonTemplateORM).where(LessonTemplateORM.is_default == True))
+        for old in r.scalars().all():
+            old.is_default = False
+        tpl.is_default = True
+        await session.commit()
+        return ApiResponse(message="已设为默认模板", data={"id": template_id, "name": tpl.name})
+
+
+@router.post("/lesson-templates/import")
+async def import_lesson_template(file: UploadFile = File(...), course_id: Optional[int] = Form(None), name: Optional[str] = Form(None)):
+    """上传Word文档(.docx)导入教案模板"""
+    async for session in get_session():
+        try:
+            raw = await file.read()
+            filename = (file.filename or "").lower()
+            if filename.endswith(".docx"):
+                structure = parse_template_docx(raw)
+                template_name = name or (file.filename or "导入的模板").replace(".docx", "").replace(".DOCX", "")
+                description = f"从Word文档导入: {file.filename or '未知'}"
+            else:
+                raise ValueError("仅支持 .docx 格式的Word文档，请上传可编辑的Word教案模板文件")
+            tpl = LessonTemplateORM(
+                course_id=course_id,
+                name=str(template_name)[:100],
+                description=str(description),
+                structure_json=structure,
+                is_default=False,
+            )
+            session.add(tpl)
+            await session.commit()
+            await session.refresh(tpl)
+            return ApiResponse(message="模板导入成功", data={"id": tpl.id, "name": tpl.name})
+        except Exception as e:
+            return ApiResponse(
+                success=False,
+                message=f"模板导入失败: {type(e).__name__}: {e}",
+                data={"error_code": "TEMPLATE_IMPORT_INVALID", "fallbacks": ["retry", "download_sample"]},
+            )
+
+
+@router.put("/lesson-templates/{template_id}/upload-docx")
+async def upload_lesson_template_docx(template_id: int, file: UploadFile = File(...)):
+    """上传Word文档(.docx)更新已有教案模板"""
+    async for session in get_session():
+        try:
+            tpl = await session.get(LessonTemplateORM, template_id)
+            if not tpl:
+                raise HTTPException(404, "模板不存在")
+            raw = await file.read()
+            filename = (file.filename or "").lower()
+            if not filename.endswith(".docx"):
+                raise ValueError("仅支持 .docx 格式的Word文档")
+            structure = parse_template_docx(raw)
+            tpl.structure_json = structure
+            await session.commit()
+            return ApiResponse(message="模板已更新", data={"id": tpl.id, "name": tpl.name})
+        except HTTPException:
+            raise
+        except Exception as e:
+            return ApiResponse(
+                success=False,
+                message=f"模板更新失败: {type(e).__name__}: {e}",
+                data={"error_code": "TEMPLATE_IMPORT_INVALID", "fallbacks": ["retry", "download_sample"]},
+            )
+
+
+@router.get("/lesson-templates/default/download")
+async def download_default_template():
+    """下载默认教案模板的Word文档(.docx)"""
+    from pathlib import Path
+    safe_name = urllib.parse.quote("默认教案模板")
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    default_path = static_dir / "default_template.docx"
+    if default_path.exists():
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}.docx",
+        }
+        return Response(
+            content=default_path.read_bytes(),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
+    async for session in get_session():
+        r = await session.execute(
+            select(LessonTemplateORM).where(LessonTemplateORM.is_default == True).limit(1)
+        )
+        tpl = r.scalars().first()
+        if not tpl:
+            raise HTTPException(404, "默认模板不存在")
+        docx_bytes = generate_template_docx(tpl.structure_json or {}, "默认教案模板")
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{safe_name}.docx",
+        }
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
+
+
+@router.get("/lesson-templates/{template_id}/download")
+async def download_lesson_template(template_id: int):
+    """下载教案模板为可编辑的Word文档(.docx)"""
+    async for session in get_session():
+        tpl = await session.get(LessonTemplateORM, template_id)
+        if not tpl:
+            raise HTTPException(404, "模板不存在")
+        docx_bytes = generate_template_docx(tpl.structure_json or {}, tpl.name or "教案模板")
+        safe_name = re.sub(r'[\\/*?:"<>|]', '_', tpl.name or 'template')
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(safe_name)}.docx",
+        }
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
+
+
+@router.post("/lessons/{lesson_id}/fallback-template")
+async def lesson_fallback_template(lesson_id: int, payload: dict):
+    """跳过AI，直接用指定 template_id（或默认模板）生成骨架并写入 lesson.plan_json"""
+    template_id = payload.get("template_id")
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        course = await session.get(CourseORM, lesson.course_id)
+        # 取模板
+        template_structure = {}
+        if template_id:
+            tpl = await session.get(LessonTemplateORM, template_id)
+            if tpl:
+                template_structure = tpl.structure_json or {}
+        if not template_structure:
+            r = await session.execute(select(LessonTemplateORM).where(LessonTemplateORM.is_default == True).limit(1))
+            dt = r.scalars().first()
+            if dt:
+                template_structure = dt.structure_json or {}
+        defaults = template_structure.get("defaults", {}) if template_structure else {}
+        plan_dict = await _apply_template_defaults(defaults, template_structure, course.name if course else "", lesson.chapter)
+        lesson.plan_json = plan_dict
+        lesson.updated_at = datetime.utcnow()
+        await session.commit()
+        return ApiResponse(message="已使用模板骨架填充", data={"id": lesson.id, "plan": plan_dict})
+
+
+# ============================================================
+# 教案版本历史（类似 Git 的快照管理）
+# ============================================================
+@router.get("/lessons/{lesson_id}/versions")
+async def list_lesson_versions(lesson_id: int):
+    """列出教案的所有版本历史"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        r = await session.execute(
+            select(LessonVersionORM)
+            .where(LessonVersionORM.lesson_id == lesson_id)
+            .order_by(LessonVersionORM.version_number.desc())
+        )
+        versions = r.scalars().all()
+        return ApiResponse(data=[{
+            "id": v.id,
+            "version_number": v.version_number,
+            "description": v.description,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        } for v in versions])
+
+
+@router.get("/lessons/{lesson_id}/versions/{version_id}")
+async def get_lesson_version(lesson_id: int, version_id: int):
+    """获取指定版本的完整 plan_json"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        version = await session.get(LessonVersionORM, version_id)
+        if not version or version.lesson_id != lesson_id:
+            raise HTTPException(404, "版本不存在")
+        return ApiResponse(data={
+            "id": version.id,
+            "version_number": version.version_number,
+            "description": version.description,
+            "plan_json": version.plan_json,
+            "created_at": version.created_at.isoformat() if version.created_at else None,
+        })
+
+
+@router.post("/lessons/{lesson_id}/versions")
+async def create_lesson_version(lesson_id: int, payload: dict):
+    """手动创建版本快照（可以为当前版本添加描述性标签）"""
+    description = (payload.get("description") or "").strip()[:200]
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        r = await session.execute(
+            select(func.max(LessonVersionORM.version_number)).where(
+                LessonVersionORM.lesson_id == lesson_id
+            )
+        )
+        max_ver = r.scalar() or 0
+        snapshot = LessonVersionORM(
+            lesson_id=lesson_id,
+            version_number=max_ver + 1,
+            plan_json=lesson.plan_json,
+            description=description or f"v{max_ver + 1}",
+        )
+        session.add(snapshot)
+        await session.commit()
+        return ApiResponse(message="版本已创建", data={
+            "id": snapshot.id,
+            "version_number": snapshot.version_number,
+            "description": snapshot.description,
+            "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+        })
+
+
+@router.post("/lessons/{lesson_id}/versions/{version_id}/restore")
+async def restore_lesson_version(lesson_id: int, version_id: int):
+    """恢复指定版本，同时将当前版本自动保存为快照"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        version = await session.get(LessonVersionORM, version_id)
+        if not version or version.lesson_id != lesson_id:
+            raise HTTPException(404, "版本不存在")
+        # 将当前内容保存为新版本快照
+        r = await session.execute(
+            select(func.max(LessonVersionORM.version_number)).where(
+                LessonVersionORM.lesson_id == lesson_id
+            )
+        )
+        max_ver = r.scalar() or 0
+        snapshot = LessonVersionORM(
+            lesson_id=lesson_id,
+            version_number=max_ver + 1,
+            plan_json=lesson.plan_json,
+            description=f"恢复前快照 v{max_ver + 1}",
+        )
+        session.add(snapshot)
+        # 恢复指定版本
+        lesson.plan_json = version.plan_json
+        lesson.updated_at = datetime.utcnow()
+        await session.commit()
+        return ApiResponse(message=f"已恢复到版本 v{version.version_number}", data={"plan": version.plan_json})
+
+
+# ============================================================
+# 一键提取知识点（多教材合并 + 联网校验 + 去重）
+# ============================================================
+async def _web_verify_knowledge(name: str, timeout: float = 3.0) -> tuple[int, str, str]:
+    """联网校验知识点准确性：优先DuckDuckGo摘要/Wikipedia，失败降级warn；返回 (score 0-5, reason, flag)"""
+    if not name:
+        return (0, "知识点名称为空", "fail")
+    name_enc = urllib.parse.quote(name)
+    # 1) DuckDuckGo Instant Answer API
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as http:
+            async with http.get(f"https://api.duckduckgo.com/?q={name_enc}&format=json&no_html=1&skip_disambig=1") as resp:
+                if resp.status == 200:
+                    data = await resp.json(content_type=None)
+                    abstract = (data.get("Abstract") or data.get("AbstractText") or "").strip()
+                    if len(abstract) >= 15:
+                        score = 5 if data.get("Type") == "A" else 4
+                        reason_snippet = abstract[:140].replace("\n", " ")
+                        return (score, f"DuckDuckGo摘要匹配: {reason_snippet}", "pass")
+                    related = data.get("RelatedTopics") or []
+                    if isinstance(related, list) and len(related) >= 1:
+                        return (3, "DuckDuckGo找到相关主题，未找到精确摘要", "warn")
+    except Exception:
+        pass
+    # 2) Wikipedia OpenSearch（中文）
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as http:
+            w_url = f"https://zh.wikipedia.org/w/api.php?action=opensearch&search={name_enc}&limit=2&format=json"
+            async with http.get(w_url) as resp:
+                if resp.status == 200:
+                    j = await resp.json(content_type=None)
+                    if isinstance(j, list) and len(j) >= 3 and j[2] and isinstance(j[2], list) and j[2][0]:
+                        snippet = j[2][0][:140]
+                        return (4, f"维基百科条目匹配: {snippet}", "pass")
+    except Exception:
+        pass
+    # 3) 降级：LLM 自检（如果配置了）
+    try:
+        cfg = get_llm_config()
+        if cfg.is_configured():
+            llm = get_llm()
+            text = await llm.chat(
+                system_prompt="你是百科知识审核员。仅输出 JSON: {\"score\": 0-5整数, \"reason\": \"一句话\", \"flag\": \"pass|warn|fail\"}。score=0表示完全不存在/伪科学，3=边界/需要上下文，5=权威标准概念。",
+                user_prompt=f"请评估知识点「{name}」是否真实存在且为主流知识。仅返回JSON，不要多余文字。",
+                temperature=0.0,
+                max_tokens=200,
+            )
+            # 尝试解析 JSON（可能是 code block）
+            cleaned = text.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.strip("`")
+                if cleaned.lower().startswith("json"):
+                    cleaned = cleaned[4:]
+                cleaned = cleaned.strip()
+            start, end = cleaned.find("{"), cleaned.rfind("}")
+            if start != -1 and end != -1:
+                j = json.loads(cleaned[start:end+1])
+                s = int(j.get("score", 2) or 2)
+                f = j.get("flag", "warn") if j.get("flag") in ("pass","warn","fail") else "warn"
+                r = str(j.get("reason", "LLM自检完成"))[:180]
+                return (s, r, f)
+    except Exception:
+        pass
+    return (2, "无法联网验证，仅保留AI原始识别结果", "warn")
+
+
+@router.post("/courses/{course_id}/smart-extract-points")
+async def smart_extract_points(course_id: int, payload: dict):
+    """多教材批量提取知识点 + 去重 + 联网准确性校验 + 入库"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        material_ids = payload.get("material_ids") or []
+        if not isinstance(material_ids, list) or not material_ids:
+            raise HTTPException(400, "请至少选择1个教材资源")
+        chapter_framework = payload.get("chapter_framework")  # 可选：预设章节框架，如 ["第一章 绪论", "第二章 ..."]
+        # 读取教材内容并拼接
+        mats_result = await session.execute(
+            select(MaterialORM).where(
+                MaterialORM.course_id == course_id,
+                MaterialORM.id.in_([int(x) for x in material_ids]),
+            )
+        )
+        mats = mats_result.scalars().all()
+        if not mats:
+            raise HTTPException(404, "所选教材不存在")
+        combined_text_parts = []
+        for m in mats:
+            text = m.content_text or ""
+            combined_text_parts.append(f"=== 教材：{m.filename} (类型:{MATERIAL_TYPE_LABELS.get(m.material_type,'其他')}) ===\n{text}")
+        combined_text = "\n\n".join(combined_text_parts)
+
+        # 使用分段递归提取（chunked_extract_knowledge），突破单次12000字符限制
+        all_points: list[dict] = []
+        try:
+            chapter_label = "、".join(m.filename for m in mats)
+
+            async def _progress_cb(current, total, points_so_far):
+                await _update_extract_progress(course_id, current, total, points_so_far)
+
+            kp_result = await chunked_extract_knowledge(
+                course.name, chapter_label, combined_text,
+                progress_callback=_progress_cb,
+                subject=course.subject or None,
+                chapter_framework=chapter_framework,
+            )
+            for p in kp_result.points:
+                if isinstance(p, dict):
+                    all_points.append(p)
+                else:
+                    try:
+                        all_points.append(p.model_dump())
+                    except Exception:
+                        pass
+        except Exception as e1:
+            # 降级：调用 smart_extract（章节结构提取器），扁平化所有 knowledge_points
+            try:
+                # 降级链路也使用完整文本（不截断）
+                chapters = await smart_extract(
+                    course.name, "、".join(m.filename for m in mats), combined_text,
+                    subject=course.subject or None,
+                )
+                def _flatten(nodes):
+                    out = []
+                    for node in (nodes or []):
+                        for kp in (node.get("knowledge_points") or []):
+                            out.append(kp)
+                        out.extend(_flatten(node.get("children") or []))
+                    return out
+                all_points = _flatten(chapters)
+            except Exception as e2:
+                return ApiResponse(
+                    success=False,
+                    message=f"知识点提取均失败: 主链路{e1} / 降级链路{e2}",
+                    data={"error_code": "EXTRACT_ALL_FAILED", "fallbacks": FALLBACK_ACTIONS},
+                )
+
+        # 归一化去重（精确匹配 + 模糊匹配）
+        def _fuzzy_match_key(name: str, seen_keys: set[str]) -> str | None:
+            lowered = name.lower().strip()
+            if lowered in seen_keys:
+                return lowered
+            for k in seen_keys:
+                if lowered in k or k in lowered:
+                    return k
+            for k in seen_keys:
+                if SequenceMatcher(None, lowered, k).ratio() > 0.85:
+                    return k
+            return None
+
+        seen: dict[str, dict] = {}
+        seen_keys: set[str] = set()
+        for p in all_points:
+            nm = (p.get("name") or "").strip()
+            if not nm:
+                continue
+            key = nm.lower()
+            existing_key = _fuzzy_match_key(nm, seen_keys) if key not in seen else key
+            if existing_key and existing_key in seen:
+                old = seen[existing_key]
+                old_def = old.get("definition", "")
+                new_def = p.get("definition", "")
+                if len(new_def) > len(old_def):
+                    old["definition"] = new_def
+                for flag in ("is_key_point", "is_difficult", "is_exam_point"):
+                    if p.get(flag):
+                        old[flag] = True
+                old_imp = old.get("importance", 3)
+                new_imp = p.get("importance", 3)
+                old["importance"] = max(old_imp, new_imp)
+                old_dif = old.get("difficulty", 3)
+                new_dif = p.get("difficulty", 3)
+                old["difficulty"] = max(old_dif, new_dif)
+                old_prereq = set(old.get("prerequisites") or [])
+                new_prereq = set(p.get("prerequisites") or [])
+                old["prerequisites"] = list(old_prereq | new_prereq)
+                old_rels = old.get("relationships") or []
+                new_rels = p.get("relationships") or []
+                existing_targets = {(r["target"], r["rel_type"]) for r in old_rels}
+                for r in new_rels:
+                    key_r = (r["target"], r["rel_type"])
+                    if key_r not in existing_targets:
+                        old_rels.append(r)
+                        existing_targets.add(key_r)
+                old["relationships"] = old_rels
+            else:
+                seen[key] = {
+                    "name": nm,
+                    "definition": (p.get("definition") or "").strip(),
+                    "source_pages": (p.get("source_pages") or "").strip(),
+                    "layer": p.get("layer") if p.get("layer") in ("basic","core","extension") else "core",
+                    "importance": int(p.get("importance") or 3),
+                    "difficulty": int(p.get("difficulty") or 3),
+                    "is_key_point": bool(p.get("is_key_point", False)),
+                    "is_difficult": bool(p.get("is_difficult", False)),
+                    "is_exam_point": bool(p.get("is_exam_point", False)),
+                    "prerequisites": list(p.get("prerequisites") or []),
+                    "relationships": list(p.get("relationships") or []),
+                }
+                seen_keys.add(key)
+        deduped = list(seen.values())
+
+        # 质量过滤：剔除低质量/不完整知识点
+        def _filter_quality(points: list[dict]) -> list[dict]:
+            PLACEHOLDER_PATTERNS = ["待补充", "暂无", "待完善", "待填", "待定", "暂无定义", "暂无内容", "请补充", "请完善"]
+            filtered = []
+            seen_defs: list[str] = []
+            for p in points:
+                nm = (p.get("name") or "").strip()
+                definition = (p.get("definition") or "").strip()
+                if len(nm) < 2 or len(definition) < 15:
+                    continue
+                if any(pat in definition.lower() for pat in PLACEHOLDER_PATTERNS):
+                    continue
+                importance = int(p.get("importance") or 3)
+                difficulty = int(p.get("difficulty") or 3)
+                if not (1 <= importance <= 5) or not (1 <= difficulty <= 5):
+                    continue
+                is_dup = False
+                for ed in seen_defs:
+                    if SequenceMatcher(None, definition, ed).ratio() > 0.9:
+                        is_dup = True
+                        break
+                if is_dup:
+                    continue
+                seen_defs.append(definition)
+                filtered.append(p)
+            return filtered
+
+        pre_count = len(deduped)
+        deduped = _filter_quality(deduped)
+        if len(deduped) < pre_count:
+            logger.info("质量过滤移除了 %d 个低质量知识点", pre_count - len(deduped))
+
+        # 联网校验（批量：>30 个知识点分批，每批单例，总数限制 200）
+        limited = deduped[:200]
+        accuracy_results = []
+        for kp in limited:
+            score, reason, flag = await _web_verify_knowledge(kp["name"])
+            kp["accuracy"] = {"accuracy_score": score, "accuracy_reason": reason, "accuracy_flag": flag}
+            accuracy_results.append({"name": kp["name"], "score": score, "flag": flag})
+
+        # 写 DB（先删除课程原有 KP？不，追加但重名更新。这里简单：追加，按 name+course_id 判定若存在则 update）
+        written_count = 0
+        output_points = []
+        for kp in limited:
+            # 查重同课程同名
+            exist_r = await session.execute(
+                select(KnowledgePointORM).where(
+                    KnowledgePointORM.course_id == course_id,
+                    func.lower(KnowledgePointORM.name) == kp["name"].lower(),
+                ).limit(1)
+            )
+            exist = exist_r.scalars().first()
+            accuracy = kp.get("accuracy") or {}
+            if exist:
+                exist.definition = kp["definition"] or exist.definition
+                exist.source_pages = kp["source_pages"] or exist.source_pages
+                exist.layer = kp["layer"]
+                exist.importance = kp["importance"]
+                exist.difficulty = kp["difficulty"]
+                exist.is_key_point = int(kp["is_key_point"])
+                exist.is_difficult = int(kp["is_difficult"])
+                exist.is_exam_point = int(kp["is_exam_point"])
+                exist.prerequisites_json = kp["prerequisites"]
+                exist.relationships_json = kp.get("relationships") or []
+                exist.accuracy_json = accuracy
+                kp_id = exist.id
+            else:
+                obj = KnowledgePointORM(
+                    course_id=course_id,
+                    chapter="",
+                    name=kp["name"],
+                    definition=kp["definition"],
+                    source_pages=kp["source_pages"],
+                    layer=kp["layer"],
+                    importance=kp["importance"],
+                    difficulty=kp["difficulty"],
+                    is_key_point=int(kp["is_key_point"]),
+                    is_difficult=int(kp["is_difficult"]),
+                    is_exam_point=int(kp["is_exam_point"]),
+                    prerequisites_json=kp["prerequisites"],
+                    relationships_json=kp.get("relationships") or [],
+                    accuracy_json=accuracy,
+                    sort_order=written_count,
+                )
+                session.add(obj)
+                await session.flush()
+                kp_id = obj.id
+            written_count += 1
+            output_points.append({"id": kp_id, **kp})
+        await session.commit()
+
+        # ---- 生成章节目录 ----
+        chapter_tree = []
+        try:
+            if chapter_framework and isinstance(chapter_framework, list) and len(chapter_framework) > 0:
+                # 使用用户预设的章节框架
+                raw_chapters = []
+                for ci, ch_name in enumerate(chapter_framework):
+                    ch_name = ch_name.strip()
+                    if not ch_name:
+                        continue
+                    raw_chapters.append({"name": ch_name, "children": []})
+                logger.info("使用用户预设章节框架: %s", chapter_framework)
+            else:
+                # 自动生成章节目录
+                raw_chapters = await organize_knowledge_into_chapters(course.name, deduped)
+
+            if raw_chapters:
+                # 删除该课程下原有的自动生成章节（非手动创建的，即没有 parent_id 的顶级章节）
+                existing_chapters_r = await session.execute(
+                    select(ChapterORM).where(
+                        ChapterORM.course_id == course_id,
+                        ChapterORM.parent_id.is_(None),
+                    )
+                )
+                for old_ch in existing_chapters_r.scalars().all():
+                    await session.delete(old_ch)
+                await session.flush()
+
+                for ci, ch in enumerate(raw_chapters):
+                    ch_name = ch.get("name", "").strip()
+                    if not ch_name:
+                        continue
+                    ch_obj = ChapterORM(
+                        course_id=course_id,
+                        parent_id=None,
+                        name=ch_name,
+                        sort_order=ci,
+                    )
+                    session.add(ch_obj)
+                    await session.flush()
+                    children = ch.get("children") or []
+                    for si, child in enumerate(children):
+                        child_name = child.get("name", "").strip()
+                        if not child_name:
+                            continue
+                        child_obj = ChapterORM(
+                            course_id=course_id,
+                            parent_id=ch_obj.id,
+                            name=child_name,
+                            sort_order=si,
+                        )
+                        session.add(child_obj)
+                        await session.flush()
+                        kp_names = child.get("knowledge_points") or []
+                        for kpn in kp_names:
+                            kp_r = await session.execute(
+                                select(KnowledgePointORM).where(
+                                    KnowledgePointORM.course_id == course_id,
+                                    func.lower(KnowledgePointORM.name) == kpn.strip().lower(),
+                                ).limit(1)
+                            )
+                            kp = kp_r.scalars().first()
+                            if kp:
+                                kp.chapter_id = child_obj.id
+                                kp.chapter = child_name
+                await session.commit()
+                chapter_tree = raw_chapters
+        except Exception as e:
+            logger.warning(f"章节自动生成失败（不阻塞主流程）: {e}")
+
+        stats = {
+            "total": len(output_points),
+            "pass": sum(1 for a in accuracy_results if a["flag"] == "pass"),
+            "warn": sum(1 for a in accuracy_results if a["flag"] == "warn"),
+            "fail": sum(1 for a in accuracy_results if a["flag"] == "fail"),
+            "avg_score": round(sum(a["score"] for a in accuracy_results) / max(1, len(accuracy_results)), 2),
+        }
+        return ApiResponse(
+            message=f"一键提取完成：共识别 {len(output_points)} 个知识点（通过{stats['pass']} / 待确认{stats['warn']} / 不通过{stats['fail']}）",
+            data={
+                "course_id": course_id,
+                "points": output_points,
+                "accuracy_stats": stats,
+                "material_count": len(mats),
+                "chapters": chapter_tree,
+            },
+        )
+
+
+# ============================================================
+# 知识点 XLSX 导出（贴合用户模板：Sheet3 R1说明 R2表头 14列）
+# ============================================================
+def _layer_to_category(layer: str, is_category_node: bool = False) -> str:
+    if is_category_node:
+        return "元认知"
+    return {
+        "basic": "事实性",
+        "core": "概念性",
+        "extension": "程序性",
+    }.get(layer, "概念性")
+
+
+async def _build_hierarchy(session: AsyncSession, course_id: int, filter_ids: list[int] | None):
+    """从 DB KP 数据构造层级路径：取 layer 分桶 + 按 prerequisites 推断后置/关联；输出扁平记录列表（每节点一行）"""
+    stmt = select(KnowledgePointORM).where(KnowledgePointORM.course_id == course_id)
+    if filter_ids:
+        stmt = stmt.where(KnowledgePointORM.id.in_(filter_ids))
+    stmt = stmt.order_by(KnowledgePointORM.layer, KnowledgePointORM.sort_order)
+    r = await session.execute(stmt)
+    kps = list(r.scalars().all())
+    # 分层：basic(事实性) 放 B 列父节点，core(概念性) 作为子节点 C 列，extension(程序性) D 列；余下列留空（最多 7 层 B-H）
+    # 实际策略：用户模板 B-H=节点名称(层级路径)。这里采用 前缀层：课程(固定)->章(layer桶)->节(name prefix) 共3层，然后知识点名称放后面列
+    layers = {"basic": [], "core": [], "extension": []}
+    for kp in kps:
+        bucket = kp.layer if kp.layer in layers else "core"
+        layers[bucket].append(kp)
+    # 反向构建 后置节点图
+    prereq_map: dict[str, list[str]] = {}
+    for kp in kps:
+        name = kp.name
+        for pr in (kp.prerequisites_json or []):
+            if isinstance(pr, str) and pr:
+                prereq_map.setdefault(pr, []).append(name)
+    records = []
+    # 课程分类节点（行1：课程名称根节点）
+    course_r = await session.get(CourseORM, course_id)
+    course_name = course_r.name if course_r else "课程"
+    records.append({
+        "node_type": "分类",
+        "path": [course_name, "", "", "", "", "", ""],  # B-H
+        "pre": "", "post": "", "rel": "",
+        "tags": "",
+        "category": "元认知",
+        "definition": f"课程根节点：{course_name}，共{len(kps)}个知识点",
+    })
+    # 三个 layer 桶作为"章"分类节点
+    layer_label = {"basic": "基础知识点（事实性）", "core": "核心知识点（概念性）", "extension": "拓展知识点（程序性）"}
+    for layer_key in ("basic", "core", "extension"):
+        bucket = layers[layer_key]
+        if not bucket:
+            continue
+        records.append({
+            "node_type": "分类",
+            "path": [course_name, layer_label[layer_key], "", "", "", "", ""],
+            "pre": "", "post": "", "rel": "",
+            "tags": "",
+            "category": "元认知",
+            "definition": f"{layer_label[layer_key]}，共{len(bucket)}个知识点",
+        })
+        # 每个 KP 作为 知识点节点
+        for kp in bucket:
+            tags_list = []
+            if kp.is_key_point:
+                tags_list.append("重点")
+            if kp.is_difficult:
+                tags_list.append("难点")
+            if kp.is_exam_point:
+                tags_list.append("考点")
+            acc = kp.accuracy_json or {}
+            if isinstance(acc, dict) and acc.get("accuracy_flag") == "fail":
+                tags_list.append("待核实")
+            # path：课程 → 章桶 → 知识点名（其余列空，总层数<7）
+            path = [course_name, layer_label[layer_key], kp.name, "", "", "", ""]
+            pre_list = [p for p in (kp.prerequisites_json or []) if isinstance(p, str) and p]
+            post_list = prereq_map.get(kp.name, [])
+            records.append({
+                "node_type": "知识点",
+                "path": path,
+                "pre": "；".join(pre_list),
+                "post": "；".join(post_list),
+                "rel": "",
+                "tags": "；".join(tags_list),
+                "category": _layer_to_category(layer_key),
+                "definition": kp.definition or "（暂无定义）",
+            })
+    return records
+
+
+@router.post("/courses/{course_id}/knowledge-points/export-xlsx")
+async def export_knowledge_xlsx(course_id: int, payload: dict | None = None):
+    """按模板(Sheet3, R1说明, R2表头)导出 14 列 XLSX"""
+    payload = payload or {}
+    filter_ids = payload.get("filter_ids") or None
+    chapter_name = payload.get("chapter_name") or ""
+    # 模板原第一行/第二行说明文字（完全贴合用户模板格式）
+    TEMPLATE_R1 = "说明：1)节点类型必填：分类/知识点；2)列B-H填节点层级路径，分类节点先填，知识点节点逐层往后填直至首个空列；3)前置/后置/关联节点填名称并以分号分隔；4)标签填重点/难点/考点/思政等；5)知识点分类∈{事实性,概念性,程序性,元认知}"
+    TEMPLATE_HEADER = [
+        "节点类型*",                # A
+        "节点名称",                  # B
+        "节点名称",                  # C
+        "节点名称",                  # D
+        "节点名称",                  # E
+        "节点名称",                  # F
+        "节点名称",                  # G
+        "节点名称",                  # H
+        "前置节点",                  # I
+        "后置节点",                  # J
+        "关联节点",                  # K
+        "标签",                      # L
+        "知识点分类",                # M
+        "节点说明",                  # N
+    ]
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        raise HTTPException(500, "缺少openpyxl依赖，请在backend目录执行 pip install openpyxl")
+
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        records = await _build_hierarchy(session, course_id, filter_ids)
+
+    wb = Workbook()
+    # 删除默认 sheet，创建名为 Sheet3 的工作表（与用户模板一致）
+    default = wb.active
+    wb.remove(default)
+    ws = wb.create_sheet("Sheet3")
+    # R1 说明（A列整长文字，其余空）
+    ws.append([TEMPLATE_R1] + [""] * 13)
+    # R2 表头（14列）
+    ws.append(TEMPLATE_HEADER)
+    # R3 起数据
+    for rec in records:
+        path = rec["path"]  # list 7 项 (B-H)
+        row = [
+            rec["node_type"],          # A
+            path[0], path[1], path[2], path[3], path[4], path[5], path[6],  # B-H
+            rec["pre"],                # I
+            rec["post"],               # J
+            rec["rel"],                # K
+            rec["tags"],               # L
+            rec["category"],           # M
+            rec["definition"],         # N
+        ]
+        ws.append(row)
+    # 列宽优化（避免过窄）
+    widths = [10, 22, 22, 22, 22, 22, 22, 22, 22, 22, 16, 22, 12, 60]
+    for idx, w in enumerate(widths, 1):
+        ws.column_dimensions[chr(64 + idx) if idx <= 26 else "A" + chr(64 + idx - 26)].width = w
+    # 标题行 R1 合并 A1:N1，保持第一行作为说明
+    from openpyxl.styles import Alignment, Font
+    ws.merge_cells("A1:N1")
+    ws["A1"].alignment = Alignment(wrap_text=True, vertical="center")
+    ws["A1"].font = Font(italic=True, color="666666")
+
+    # 转 bytes
+    import io
+    buf = io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    safe_title = f"{course.name}_知识点图谱".replace(" ", "_")
+    safe_title = "".join(c for c in safe_title if c.isalnum() or c in "_-") or "knowledge_points"
+    filename_encoded = urllib.parse.quote(f"{safe_title}.xlsx")
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"knowledge_points.xlsx\"; filename*=UTF-8''{filename_encoded}",
+        },
+    )
+
+
+# ============================================================
+# 知识点提取进度轮询
+# ============================================================
+@router.get("/courses/{course_id}/extract-progress")
+async def get_extract_progress(course_id: int):
+    progress = _extract_progress.get(course_id)
+    if not progress:
+        return ApiResponse(data={
+            "current": 0,
+            "total": 0,
+            "points": [],
+            "updated_at": None,
+            "running": False,
+        })
+    return ApiResponse(data={
+        "current": progress["current"],
+        "total": progress["total"],
+        "points": progress["points"],
+        "updated_at": progress["updated_at"],
+        "running": progress["current"] < progress["total"],
+    })
+
+
+# ============================================================
+# 教学日历视图
+# ============================================================
+@router.get("/courses/{course_id}/schedule")
+async def list_schedule(course_id: int):
+    """获取课程教学日历"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        stmt = select(ScheduleORM).where(
+            ScheduleORM.course_id == course_id
+        ).order_by(ScheduleORM.week_number, ScheduleORM.day_of_week, ScheduleORM.sort_order)
+        result = await session.execute(stmt)
+        entries = result.scalars().all()
+
+        chapter_ids = set(e.chapter_id for e in entries if e.chapter_id)
+        lesson_ids = set(e.lesson_id for e in entries if e.lesson_id)
+        chapter_map = {}
+        lesson_map = {}
+        if chapter_ids:
+            r = await session.execute(select(ChapterORM).where(ChapterORM.id.in_(chapter_ids)))
+            for ch in r.scalars().all():
+                chapter_map[ch.id] = ch.name
+        if lesson_ids:
+            r = await session.execute(select(LessonORM).where(LessonORM.id.in_(lesson_ids)))
+            for le in r.scalars().all():
+                lesson_map[le.id] = le.title or le.chapter
+
+        data = []
+        for e in entries:
+            data.append({
+                "id": e.id,
+                "course_id": e.course_id,
+                "chapter_id": e.chapter_id,
+                "lesson_id": e.lesson_id,
+                "week_number": e.week_number,
+                "day_of_week": e.day_of_week,
+                "period": e.period or "",
+                "content": e.content or "",
+                "sort_order": e.sort_order,
+                "chapter_name": chapter_map.get(e.chapter_id) or "",
+                "lesson_title": lesson_map.get(e.lesson_id) or "",
+                "created_at": e.created_at.isoformat() if e.created_at else "",
+                "updated_at": e.updated_at.isoformat() if e.updated_at else "",
+            })
+        return ApiResponse(data=data)
+
+
+@router.post("/courses/{course_id}/schedule")
+async def create_schedule(course_id: int, payload: ScheduleCreate):
+    """创建教学日历条目"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+        entry = ScheduleORM(
+            course_id=course_id,
+            chapter_id=payload.chapter_id,
+            lesson_id=payload.lesson_id,
+            week_number=payload.week_number,
+            day_of_week=payload.day_of_week,
+            period=payload.period,
+            content=payload.content,
+            sort_order=payload.sort_order,
+        )
+        session.add(entry)
+        await session.commit()
+        await session.refresh(entry)
+        return ApiResponse(data={"id": entry.id, "message": "日程已创建"})
+
+
+@router.put("/schedule/{schedule_id}")
+async def update_schedule(schedule_id: int, payload: ScheduleUpdate):
+    """更新教学日历条目"""
+    async for session in get_session():
+        entry = await session.get(ScheduleORM, schedule_id)
+        if not entry:
+            raise HTTPException(404, "日程条目不存在")
+        if payload.chapter_id is not None:
+            entry.chapter_id = payload.chapter_id
+        if payload.lesson_id is not None:
+            entry.lesson_id = payload.lesson_id
+        if payload.week_number is not None:
+            entry.week_number = payload.week_number
+        if payload.day_of_week is not None:
+            entry.day_of_week = payload.day_of_week
+        if payload.period is not None:
+            entry.period = payload.period
+        if payload.content is not None:
+            entry.content = payload.content
+        if payload.sort_order is not None:
+            entry.sort_order = payload.sort_order
+        await session.commit()
+        return ApiResponse(message="日程已更新")
+
+
+@router.delete("/schedule/{schedule_id}")
+async def delete_schedule(schedule_id: int):
+    """删除教学日历条目"""
+    async for session in get_session():
+        entry = await session.get(ScheduleORM, schedule_id)
+        if not entry:
+            raise HTTPException(404, "日程条目不存在")
+        await session.delete(entry)
+        await session.commit()
+        return ApiResponse(message="日程已删除")
+
+
+@router.post("/courses/{course_id}/schedule/auto-plan")
+async def auto_plan_schedule(course_id: int):
+    """自动生成教学日历：按章节平均分配到各周"""
+    async for session in get_session():
+        course = await session.get(CourseORM, course_id)
+        if not course:
+            raise HTTPException(404, "课程不存在")
+
+        # 清空已有计划
+        r = await session.execute(select(ScheduleORM).where(ScheduleORM.course_id == course_id))
+        for old in r.scalars().all():
+            await session.delete(old)
+
+        # 获取所有章节（按 sort_order 排序）
+        chapters = await session.execute(
+            select(ChapterORM).where(
+                ChapterORM.course_id == course_id,
+                ChapterORM.parent_id.is_(None),
+            ).order_by(ChapterORM.sort_order)
+        )
+        top_chapters = chapters.scalars().all()
+
+        # 获取所有课时
+        lessons = await session.execute(
+            select(LessonORM).where(LessonORM.course_id == course_id).order_by(LessonORM.created_at)
+        )
+        all_lessons = lessons.scalars().all()
+
+        if not top_chapters and not all_lessons:
+            return ApiResponse(success=False, message="暂无章节或可安排的内容", data=[])
+
+        total_weeks = min(20, max(8, len(top_chapters) * 2))
+        entries = []
+        day_idx = 0
+
+        for ch in top_chapters:
+            week = (day_idx // 5) + 1
+            if week > total_weeks:
+                break
+            day = (day_idx % 5) + 1
+            entry = ScheduleORM(
+                course_id=course_id,
+                chapter_id=ch.id,
+                week_number=week,
+                day_of_week=day,
+                period="第1-2节",
+                content=ch.name,
+                sort_order=day_idx,
+            )
+            session.add(entry)
+            entries.append(entry)
+            day_idx += 1
+
+        lesson_map = {}
+        for le in all_lessons:
+            key = le.chapter
+            if key not in lesson_map:
+                lesson_map[key] = []
+            lesson_map[key].append(le)
+
+        for ch in top_chapters:
+            related = lesson_map.get(ch.name, [])
+            for le in related:
+                week = (day_idx // 5) + 1
+                if week > total_weeks:
+                    break
+                day = (day_idx % 5) + 1
+                entry = ScheduleORM(
+                    course_id=course_id,
+                    chapter_id=ch.id,
+                    lesson_id=le.id,
+                    week_number=week,
+                    day_of_week=day,
+                    period="第3-4节",
+                    content=le.title or le.chapter,
+                    sort_order=day_idx,
+                )
+                session.add(entry)
+                entries.append(entry)
+                day_idx += 1
+
+        await session.commit()
+        return ApiResponse(message=f"已自动生成 {len(entries)} 条日程，共 {total_weeks} 周")
+
+
+# ============================================================
+# 多人协作备课：分享码
+# ============================================================
+@router.post("/lessons/{lesson_id}/share-codes")
+async def generate_share_code(lesson_id: int, payload: ShareCodeCreate):
+    """生成教案分享码"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        # 生成唯一 8 位码
+        chars = string.ascii_uppercase + string.digits
+        for _ in range(20):
+            code = "".join(secrets.choice(chars) for _ in range(8))
+            existing = await session.execute(
+                select(ShareCodeORM).where(ShareCodeORM.code == code)
+            )
+            if not existing.scalar_one_or_none():
+                break
+        else:
+            raise HTTPException(500, "无法生成唯一分享码，请重试")
+        sc = ShareCodeORM(lesson_id=lesson_id, code=code)
+        session.add(sc)
+        await session.commit()
+        await session.refresh(sc)
+        return ApiResponse(data={
+            "id": sc.id,
+            "lesson_id": sc.lesson_id,
+            "code": sc.code,
+            "created_at": sc.created_at.isoformat() if sc.created_at else "",
+        }, message="分享码已生成")
+
+
+@router.get("/lessons/{lesson_id}/share-codes")
+async def list_share_codes(lesson_id: int):
+    """列出教案的所有分享码"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        result = await session.execute(
+            select(ShareCodeORM).where(ShareCodeORM.lesson_id == lesson_id)
+            .order_by(ShareCodeORM.created_at.desc())
+        )
+        codes = result.scalars().all()
+        return ApiResponse(data=[
+            {
+                "id": c.id,
+                "lesson_id": c.lesson_id,
+                "code": c.code,
+                "created_at": c.created_at.isoformat() if c.created_at else "",
+            }
+            for c in codes
+        ])
+
+
+@router.delete("/lessons/{lesson_id}/share-codes/{code}")
+async def revoke_share_code(lesson_id: int, code: str):
+    """撤销分享码"""
+    async for session in get_session():
+        result = await session.execute(
+            select(ShareCodeORM).where(
+                ShareCodeORM.lesson_id == lesson_id,
+                ShareCodeORM.code == code,
+            )
+        )
+        sc = result.scalar_one_or_none()
+        if not sc:
+            raise HTTPException(404, "分享码不存在")
+        await session.delete(sc)
+        await session.commit()
+        return ApiResponse(message="分享码已撤销")
+
+
+@router.get("/shared/{code}")
+async def access_shared_lesson(code: str):
+    """通过分享码访问教案（只读）"""
+    async for session in get_session():
+        result = await session.execute(
+            select(ShareCodeORM).where(ShareCodeORM.code == code)
+        )
+        sc = result.scalar_one_or_none()
+        if not sc:
+            raise HTTPException(404, "分享码无效或已过期")
+        lesson = await session.get(LessonORM, sc.lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在或已被删除")
+        course = await session.get(CourseORM, lesson.course_id)
+        return ApiResponse(data={
+            "lesson_id": lesson.id,
+            "course_name": course.name if course else "",
+            "chapter": lesson.chapter,
+            "title": lesson.title,
+            "plan_json": lesson.plan_json,
+            "created_at": lesson.created_at.isoformat() if lesson.created_at else "",
+            "updated_at": lesson.updated_at.isoformat() if lesson.updated_at else "",
+        })
+
+
+# ============================================================
+# 多人协作备课：评论
+# ============================================================
+@router.post("/lessons/{lesson_id}/comments")
+async def create_comment(lesson_id: int, payload: CommentCreate):
+    """添加教案评论"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        comment = CommentORM(
+            lesson_id=lesson_id,
+            author=payload.author.strip(),
+            content=payload.content.strip(),
+        )
+        session.add(comment)
+        await session.commit()
+        await session.refresh(comment)
+        return ApiResponse(data={
+            "id": comment.id,
+            "lesson_id": comment.lesson_id,
+            "author": comment.author,
+            "content": comment.content,
+            "created_at": comment.created_at.isoformat() if comment.created_at else "",
+        }, message="评论已添加")
+
+
+@router.get("/lessons/{lesson_id}/comments")
+async def list_comments(lesson_id: int):
+    """获取教案的所有评论"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        result = await session.execute(
+            select(CommentORM).where(CommentORM.lesson_id == lesson_id)
+            .order_by(CommentORM.created_at.asc())
+        )
+        comments = result.scalars().all()
+        return ApiResponse(data=[
+            {
+                "id": c.id,
+                "lesson_id": c.lesson_id,
+                "author": c.author,
+                "content": c.content,
+                "created_at": c.created_at.isoformat() if c.created_at else "",
+            }
+            for c in comments
+        ])
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(comment_id: int):
+    """删除评论"""
+    async for session in get_session():
+        comment = await session.get(CommentORM, comment_id)
+        if not comment:
+            raise HTTPException(404, "评论不存在")
+        await session.delete(comment)
+        await session.commit()
+        return ApiResponse(message="评论已删除")
+
+
+# ============================================================
+# 多人协作备课：审批
+# ============================================================
+@router.post("/lessons/{lesson_id}/submit-approval")
+async def submit_approval(lesson_id: int, payload: ApprovalSubmit):
+    """提交教案审批"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        # 查找或创建审批记录
+        result = await session.execute(
+            select(ApprovalORM).where(ApprovalORM.lesson_id == lesson_id)
+        )
+        approval = result.scalar_one_or_none()
+        if not approval:
+            approval = ApprovalORM(lesson_id=lesson_id)
+            session.add(approval)
+        if approval.status == "approved":
+            return ApiResponse(success=False, message="教案已审批通过，无需重复提交")
+        approval.status = "submitted"
+        approval.submitted_by = payload.submitted_by.strip()
+        approval.submitted_at = datetime.utcnow()
+        approval.reviewed_by = ""
+        approval.reviewed_at = None
+        approval.review_comment = ""
+        await session.commit()
+        await session.refresh(approval)
+        return ApiResponse(message="教案已提交审批")
+
+
+@router.post("/approvals/{approval_id}/review")
+async def review_approval(approval_id: int, payload: ApprovalReview):
+    """审批教案（通过/驳回）"""
+    async for session in get_session():
+        approval = await session.get(ApprovalORM, approval_id)
+        if not approval:
+            raise HTTPException(404, "审批记录不存在")
+        if approval.status != "submitted":
+            return ApiResponse(success=False, message="审批状态不正确，当前状态: " + approval.status)
+        if payload.approved:
+            approval.status = "approved"
+        else:
+            approval.status = "rejected"
+        approval.reviewed_by = payload.reviewer.strip()
+        approval.reviewed_at = datetime.utcnow()
+        approval.review_comment = payload.comment.strip() if payload.comment else ""
+        await session.commit()
+        await session.refresh(approval)
+        action = "审批通过" if payload.approved else "已驳回"
+        return ApiResponse(message=f"教案{action}")
+
+
+@router.get("/lessons/{lesson_id}/approval-status")
+async def get_approval_status(lesson_id: int):
+    """获取教案审批状态"""
+    async for session in get_session():
+        lesson = await session.get(LessonORM, lesson_id)
+        if not lesson:
+            raise HTTPException(404, "教案不存在")
+        result = await session.execute(
+            select(ApprovalORM).where(ApprovalORM.lesson_id == lesson_id)
+        )
+        approval = result.scalar_one_or_none()
+        if not approval:
+            return ApiResponse(data={
+                "status": "draft",
+                "submitted_by": "",
+                "submitted_at": None,
+                "reviewed_by": "",
+                "reviewed_at": None,
+                "review_comment": "",
+            })
+        return ApiResponse(data={
+            "id": approval.id,
+            "status": approval.status,
+            "submitted_by": approval.submitted_by or "",
+            "submitted_at": approval.submitted_at.isoformat() if approval.submitted_at else None,
+            "reviewed_by": approval.reviewed_by or "",
+            "reviewed_at": approval.reviewed_at.isoformat() if approval.reviewed_at else None,
+            "review_comment": approval.review_comment or "",
+        })
+
+
+# ============================================================
+# 教学资源市场
+# ============================================================
+@router.get("/market/resources")
+async def list_market_resources(
+    category: Optional[str] = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+):
+    """列出教学资源市场资源，支持分类筛选和关键词搜索"""
+    async for session in get_session():
+        query = select(MarketResourceORM).order_by(MarketResourceORM.download_count.desc())
+        if category:
+            query = query.where(MarketResourceORM.category == category)
+        if keyword:
+            like = f"%{keyword}%"
+            query = query.where(
+                (MarketResourceORM.title.like(like)) |
+                (MarketResourceORM.description.like(like)) |
+                (MarketResourceORM.tags.like(like))
+            )
+        total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+        offset = (page - 1) * page_size
+        query = query.offset(offset).limit(page_size)
+        result = await session.execute(query)
+        resources = result.scalars().all()
+        return ApiResponse(data={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "description": r.description,
+                    "category": r.category,
+                    "resource_type": r.resource_type,
+                    "author": r.author,
+                    "rating": round(r.rating / r.rating_count, 1) if r.rating_count > 0 else 0,
+                    "rating_count": r.rating_count,
+                    "download_count": r.download_count,
+                    "tags": r.tags,
+                    "created_at": r.created_at.isoformat(),
+                }
+                for r in resources
+            ],
+        })
+
+
+@router.get("/market/resources/{resource_id}")
+async def get_market_resource(resource_id: int):
+    """获取资源详情"""
+    async for session in get_session():
+        resource = await session.get(MarketResourceORM, resource_id)
+        if not resource:
+            raise HTTPException(404, "资源不存在")
+        return ApiResponse(data={
+            "id": resource.id,
+            "title": resource.title,
+            "description": resource.description,
+            "category": resource.category,
+            "resource_type": resource.resource_type,
+            "content_json": resource.content_json,
+            "author": resource.author,
+            "rating": round(resource.rating / resource.rating_count, 1) if resource.rating_count > 0 else 0,
+            "rating_count": resource.rating_count,
+            "download_count": resource.download_count,
+            "tags": resource.tags,
+            "source_course_id": resource.source_course_id,
+            "source_lesson_id": resource.source_lesson_id,
+            "created_at": resource.created_at.isoformat(),
+            "updated_at": resource.updated_at.isoformat(),
+        })
+
+
+@router.post("/market/resources")
+async def create_market_resource(payload: MarketResourceCreate):
+    """上传资源到市场"""
+    async for session in get_session():
+        resource = MarketResourceORM(
+            title=payload.title.strip(),
+            description=payload.description.strip() if payload.description else "",
+            category=payload.category,
+            resource_type=payload.resource_type,
+            content_json=payload.content_json,
+            author=payload.author.strip(),
+            tags=payload.tags.strip(),
+            source_course_id=payload.source_course_id,
+            source_lesson_id=payload.source_lesson_id,
+        )
+        session.add(resource)
+        await session.commit()
+        await session.refresh(resource)
+        return ApiResponse(data={"id": resource.id, "title": resource.title}, message="资源已发布到市场")
+
+
+@router.delete("/market/resources/{resource_id}")
+async def delete_market_resource(resource_id: int):
+    """删除市场资源"""
+    async for session in get_session():
+        resource = await session.get(MarketResourceORM, resource_id)
+        if not resource:
+            raise HTTPException(404, "资源不存在")
+        await session.delete(resource)
+        await session.commit()
+        return ApiResponse(message="资源已删除")
+
+
+@router.post("/market/resources/{resource_id}/import")
+async def import_market_resource(resource_id: int, course_id: Optional[int] = None):
+    """导入市场资源到我的教案"""
+    async for session in get_session():
+        resource = await session.get(MarketResourceORM, resource_id)
+        if not resource:
+            raise HTTPException(404, "资源不存在")
+        # 增加下载计数
+        resource.download_count = (resource.download_count or 0) + 1
+        content = resource.content_json or {}
+        target_course_id = course_id
+        # 如果没有指定课程ID，且资源有来源课程，则使用来源课程
+        if not target_course_id and resource.source_course_id:
+            target_course_id = resource.source_course_id
+        # 如果导入了相同的课程，尝试查找课程名称
+        course_name = ""
+        if target_course_id:
+            course = await session.get(CourseORM, target_course_id)
+            if course:
+                course_name = course.name
+        await session.commit()
+        return ApiResponse(data={
+            "title": resource.title,
+            "content_json": content,
+            "category": resource.category,
+            "resource_type": resource.resource_type,
+            "course_id": target_course_id,
+            "course_name": course_name,
+        }, message="资源已导入")
+
+
+@router.post("/market/resources/{resource_id}/rate")
+async def rate_market_resource(resource_id: int, payload: MarketResourceRate):
+    """评分资源"""
+    async for session in get_session():
+        resource = await session.get(MarketResourceORM, resource_id)
+        if not resource:
+            raise HTTPException(404, "资源不存在")
+        resource.rating = (resource.rating or 0) + payload.rating
+        resource.rating_count = (resource.rating_count or 0) + 1
+        await session.commit()
+        new_avg = round(resource.rating / resource.rating_count, 1)
+        return ApiResponse(data={"rating": new_avg, "rating_count": resource.rating_count}, message="评分成功")
+
+
+# ============ AI 智能体工作流编排 ============
+
+@router.get("/workflow/agent-types")
+async def list_agent_types():
+    """获取所有可用的 Agent 类型列表"""
+    types = []
+    for key, info in AGENT_REGISTRY.items():
+        types.append({
+            "type": key,
+            "label": info["label"],
+            "color": info["color"],
+            "inputs": {k: v for k, v in info["inputs"].items()},
+            "outputs": info["outputs"],
+        })
+    return ApiResponse(data=types)
+
+
+@router.post("/workflows", status_code=201)
+async def create_workflow(payload: WorkflowCreate):
+    """创建工作流"""
+    async for session in get_session():
+        workflow = WorkflowORM(name=payload.name, description=payload.description, course_id=payload.course_id)
+        session.add(workflow)
+        await session.commit()
+        await session.refresh(workflow)
+
+        for i, step_data in enumerate(payload.steps):
+            step = WorkflowStepORM(
+                workflow_id=workflow.id,
+                sort_order=step_data.sort_order or i,
+                agent_type=step_data.agent_type,
+                label=step_data.label,
+                config_json=step_data.config_json,
+                position_x=step_data.position_x,
+                position_y=step_data.position_y,
+                input_mapping=step_data.input_mapping,
+            )
+            session.add(step)
+        await session.commit()
+
+        result = await session.execute(
+            select(WorkflowORM).options(selectinload(WorkflowORM.steps)).where(WorkflowORM.id == workflow.id)
+        )
+        return ApiResponse(data=WorkflowOut.model_validate(result.scalar_one()))
+
+
+@router.get("/workflows")
+async def list_workflows(course_id: Optional[int] = None, page: int = 1, page_size: int = 20):
+    """列出工作流"""
+    async for session in get_session():
+        query = select(WorkflowORM).options(selectinload(WorkflowORM.steps)).order_by(WorkflowORM.updated_at.desc())
+        if course_id:
+            query = query.where(WorkflowORM.course_id == course_id)
+
+        total_query = select(func.count(WorkflowORM.id))
+        if course_id:
+            total_query = total_query.where(WorkflowORM.course_id == course_id)
+        total_result = await session.execute(total_query)
+        total = total_result.scalar() or 0
+        result = await session.execute(query.offset((page - 1) * page_size).limit(page_size))
+        workflows = result.scalars().all()
+        return ApiResponse(data={"total": total, "page": page, "page_size": page_size, "items": [WorkflowOut.model_validate(w) for w in workflows]})
+
+
+@router.get("/workflows/{workflow_id}")
+async def get_workflow(workflow_id: int):
+    """获取工作流详情"""
+    async for session in get_session():
+        result = await session.execute(
+            select(WorkflowORM).options(selectinload(WorkflowORM.steps)).where(WorkflowORM.id == workflow_id)
+        )
+        workflow = result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(404, "工作流不存在")
+        return ApiResponse(data=WorkflowOut.model_validate(workflow))
+
+
+@router.put("/workflows/{workflow_id}")
+async def update_workflow(workflow_id: int, payload: WorkflowUpdate):
+    """更新工作流"""
+    async for session in get_session():
+        result = await session.execute(
+            select(WorkflowORM).options(selectinload(WorkflowORM.steps)).where(WorkflowORM.id == workflow_id)
+        )
+        workflow = result.scalar_one_or_none()
+        if not workflow:
+            raise HTTPException(404, "工作流不存在")
+
+        if payload.name is not None:
+            workflow.name = payload.name
+        if payload.description is not None:
+            workflow.description = payload.description
+
+        if payload.steps is not None:
+            for old_step in workflow.steps:
+                await session.delete(old_step)
+            await session.commit()
+
+            for i, step_data in enumerate(payload.steps):
+                step = WorkflowStepORM(
+                    workflow_id=workflow.id,
+                    sort_order=step_data.sort_order or i,
+                    agent_type=step_data.agent_type,
+                    label=step_data.label,
+                    config_json=step_data.config_json,
+                    position_x=step_data.position_x,
+                    position_y=step_data.position_y,
+                    input_mapping=step_data.input_mapping,
+                )
+                session.add(step)
+
+        workflow.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(workflow, attribute_names=["steps"])
+        return ApiResponse(data=WorkflowOut.model_validate(workflow))
+
+
+@router.delete("/workflows/{workflow_id}")
+async def delete_workflow(workflow_id: int):
+    """删除工作流"""
+    async for session in get_session():
+        workflow = await session.get(WorkflowORM, workflow_id)
+        if not workflow:
+            raise HTTPException(404, "工作流不存在")
+        await session.delete(workflow)
+        await session.commit()
+        return ApiResponse(message="工作流已删除")
+
+
+@router.post("/workflows/{workflow_id}/execute")
+async def execute_workflow_api(workflow_id: int, payload: WorkflowExecuteRequest):
+    """执行工作流"""
+    try:
+        execution = await execute_workflow(
+            workflow_id=workflow_id,
+            course_id=payload.course_id,
+            lesson_id=payload.lesson_id,
+            extra_params=payload.extra_params,
+        )
+        async for session in get_session():
+            result = await session.execute(
+                select(WorkflowExecutionORM).options(
+                    selectinload(WorkflowExecutionORM.step_executions)
+                ).where(WorkflowExecutionORM.id == execution.id)
+            )
+            execution_full = result.scalar_one()
+            return ApiResponse(data=WorkflowExecutionOut.model_validate(execution_full))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/workflows/{workflow_id}/executions")
+async def list_workflow_executions(workflow_id: int, page: int = 1, page_size: int = 10):
+    """列出工作流执行记录"""
+    async for session in get_session():
+        query = (
+            select(WorkflowExecutionORM)
+            .options(selectinload(WorkflowExecutionORM.step_executions))
+            .where(WorkflowExecutionORM.workflow_id == workflow_id)
+            .order_by(WorkflowExecutionORM.created_at.desc())
+        )
+        total = len((await session.execute(select(WorkflowExecutionORM).where(WorkflowExecutionORM.workflow_id == workflow_id))).scalars().all())
+        result = await session.execute(query.offset((page - 1) * page_size).limit(page_size))
+        executions = result.scalars().all()
+        return ApiResponse(data={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [WorkflowExecutionOut.model_validate(e) for e in executions],
+        })
+
+
+@router.get("/workflow-executions/{execution_id}")
+async def get_workflow_execution(execution_id: int):
+    """获取执行详情"""
+    async for session in get_session():
+        result = await session.execute(
+            select(WorkflowExecutionORM).options(
+                selectinload(WorkflowExecutionORM.step_executions)
+            ).where(WorkflowExecutionORM.id == execution_id)
+        )
+        execution = result.scalar_one_or_none()
+        if not execution:
+            raise HTTPException(404, "执行记录不存在")
+        return ApiResponse(data=WorkflowExecutionOut.model_validate(execution))

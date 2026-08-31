@@ -13,8 +13,9 @@ from typing import Optional
 
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from ..storage.db import TextbookChunkORM
+from ..storage.db import MaterialORM, TextbookChunkORM
 from .parser import parse_file_with_pages
 
 
@@ -94,20 +95,25 @@ async def search_textbook(
     if not keywords:
         return []
 
-    # 查询所有该课程的文本块
-    result = await session.execute(
-        select(TextbookChunkORM)
+    # 查询所有该课程的文本块，并 JOIN materials 以获取 is_primary 用于多教材版本优先级排序
+    stmt = (
+        select(TextbookChunkORM, MaterialORM.is_primary.label("mat_is_primary"))
+        .join(MaterialORM, MaterialORM.id == TextbookChunkORM.material_id)
         .where(TextbookChunkORM.course_id == course_id)
         .order_by(TextbookChunkORM.page_number)
     )
-    all_chunks: list[TextbookChunkORM] = result.scalars().all()
+    result = await session.execute(stmt)
+    rows = result.all()
 
-    # 评分排序
+    # 评分排序：主教材命中页优先（is_primary=True 加权 1000），同分按页码升序
     scored: list[tuple[float, TextbookChunkORM]] = []
-    for chunk in all_chunks:
+    for chunk, mat_is_primary in rows:
         score = _score_chunk(chunk.chunk_text, keywords)
-        if score > 0:
-            scored.append((score, chunk))
+        if score <= 0:
+            continue
+        if mat_is_primary:
+            score += 1000.0  # 主教材命中加权，确保主教材结果优先返回
+        scored.append((score, chunk))
 
     # 按分数降序取 top
     scored.sort(key=lambda x: -x[0])
@@ -151,11 +157,13 @@ async def get_knowledge_point_context(
 
     best = results[0]
     target_page = best["page_number"]
+    target_material_id = best["material_id"]
 
-    # 获取该页及前后页的内容
+    # 获取该页及前后页的内容（限定在同一本教材内，避免多教材版本页面混杂错配）
     result = await session.execute(
         select(TextbookChunkORM)
         .where(TextbookChunkORM.course_id == course_id)
+        .where(TextbookChunkORM.material_id == target_material_id)
         .where(
             TextbookChunkORM.page_number.between(
                 max(1, target_page - surrounding_pages),

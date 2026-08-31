@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2e7d6e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon-192.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/mobile/css/mobile.css">
+  <title>备课助手</title>
+</head>
+<body>
+  <div id="mobileToast" class="toast"></div>
+
+  <header class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 16V7a2 2 0 012-2h3a2 2 0 012 2v9l-3.5-2L6 16z" opacity="0.9"/><path d="M11 16V7a2 2 0 012-2h3a2 2 0 012 2v9l-3.5-2L11 16z" opacity="0.7"/><path d="M8.5 5.5V4a1 1 0 011-1h5a1 1 0 011 1v1.5" stroke="currentColor" stroke-width="0.8" fill="none" opacity="0.6"/></svg>
+      备课助手
+    </div>
+    <div class="header-right">
+      <span id="mobileApiStatus" class="api-status"></span>
+    </div>
+  </header>
+
+  <div class="app-content">
+    <div id="tab-plan" class="tab-panel active">
+      <div class="card">
+        <div class="stepper">
+          <div class="step active" id="mobileStep1">
+            <span class="step-num">1</span>
+            <span class="step-text">选课程</span>
+          </div>
+          <div class="step-connector" id="mobileStep1Connector"></div>
+          <div class="step" id="mobileStep2">
+            <span class="step-num">2</span>
+            <span class="step-text">选章节</span>
+          </div>
+          <div class="step-connector" id="mobileStep2Connector"></div>
+          <div class="step" id="mobileStep3">
+            <span class="step-num">3</span>
+            <span class="step-text">生成</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>📚 课程</span>
+          <span style="font-size:12px;color:var(--text-muted)" id="mobileSelectedCourse">未选择</span>
+        </div>
+        <div id="mobileCourseList"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>📖 章节</span>
+          <span style="font-size:12px;color:var(--text-muted)" id="mobileSelectedChapter">未选择</span>
+        </div>
+        <div id="mobileChapterList"></div>
+      </div>
+
+      <div class="btn-group" style="margin-bottom:12px">
+        <button class="btn btn-primary" id="mobileExtractBtn" onclick="mobileApp.startExtract()">
+          🔍 提取知识点
+        </button>
+        <button class="btn btn-primary" id="mobileGenerateBtn" onclick="mobileApp.generateLesson()">
+          📝 生成教案
+        </button>
+      </div>
+
+      <div id="mobileKpResult"></div>
+      <div id="mobileLessonPreview"></div>
+    </div>
+
+    <div id="tab-workflow" class="tab-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>⚙️ 工作流</span>
+          <button class="btn btn-ghost btn-sm" onclick="mobileApp.loadWorkflows()">刷新</button>
+        </div>
+        <div id="mobileWorkflowList"></div>
+      </div>
+    </div>
+
+    <div id="tab-profile" class="tab-panel">
+      <div class="card">
+        <div class="card-title">🎨 主题</div>
+        <div class="theme-selector">
+          <div class="theme-option" data-theme="" style="background:#2e7d6e" onclick="mobileApp.setTheme('')" title="青绿水墨"></div>
+          <div class="theme-option" data-theme="warm" style="background:#c4793a" onclick="mobileApp.setTheme('warm')" title="暖阳赭石"></div>
+          <div class="theme-option" data-theme="paper" style="background:#8a9a6a" onclick="mobileApp.setTheme('paper')" title="护眼米黄"></div>
+          <div class="theme-option" data-theme="ocean" style="background:#3a7a9a" onclick="mobileApp.setTheme('ocean')" title="静湖蓝调"></div>
+          <div class="theme-option" data-theme="ink" style="background:#5a5a5a" onclick="mobileApp.setTheme('ink')" title="墨韵黑白"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📱 关于</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">版本</div>
+            <div class="setting-desc" id="mobileAppVersion">-</div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">API 地址</div>
+            <div class="setting-desc" id="mobileApiEndpoint">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">💡 提示</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8">
+          <p>• 课程管理、章节编辑等完整功能请在桌面端使用</p>
+          <p>• 移动端支持快速查看课程、执行工作流</p>
+          <p>• 支持 PWA 离线缓存，常用功能可离线使用</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="bottom-tabs">
+    <button class="tab-item active" data-tab="plan" onclick="mobileApp.switchTab('plan')">
+      <span class="tab-icon">
+        <svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+      </span>
+      <span class="tab-label">备课</span>
+    </button>
+    <button class="tab-item" data-tab="workflow" onclick="mobileApp.switchTab('workflow')">
+      <span class="tab-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm0 10h8v8H3v-8zm10 0h8v8h-8v-8zm0-10h8v8h-8V3z"/></svg>
+      </span>
+      <span class="tab-label">工作流</span>
+    </button>
+    <button class="tab-item" data-tab="profile" onclick="mobileApp.switchTab('profile')">
+      <span class="tab-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+      </span>
+      <span class="tab-label">我的</span>
+    </button>
+  </nav>
+
+  <script src="/static/mobile/js/mobile.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function() {});
+    }
+  </script>
+</body>
+</html>
