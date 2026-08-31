@@ -17,7 +17,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, backref, relationship
 
 from ..config import settings
 
@@ -34,6 +34,8 @@ class CourseORM(Base):
     description = Column(Text)
     # 学科标识(用于注入学科领域规则): math/chinese/english/physics/chemistry/biology/history/geography/politics/it/other
     subject = Column(String(50), default="")
+    # 是否置顶（方便用户将重要课程放前面）
+    is_pinned = Column(Boolean, default=False, comment="是否置顶")
     # 内容缓存：教材内容哈希值，用于增量提取判断
     content_hash = Column(String(64), default="", comment="教材内容 SHA256 哈希，用于增量提取缓存")
     last_extracted_at = Column(DateTime, nullable=True, comment="上次知识点提取时间")
@@ -45,6 +47,7 @@ class CourseORM(Base):
     chapters = relationship("ChapterORM", back_populates="course", cascade="all,delete-orphan", order_by="ChapterORM.sort_order")
     knowledge_points = relationship("KnowledgePointORM", back_populates="course", cascade="all,delete-orphan", order_by="KnowledgePointORM.sort_order")
     ppt_records = relationship("PptRecordORM", back_populates="course", cascade="all,delete-orphan")
+    ppt_templates = relationship("PptTemplateORM", back_populates="course", cascade="all,delete-orphan")
     lesson_templates = relationship("LessonTemplateORM", back_populates="course", cascade="all,delete-orphan")
 
 
@@ -87,6 +90,7 @@ class ChatMessageORM(Base):
     __tablename__ = "chat_messages"
     id = Column(Integer, primary_key=True, autoincrement=True)
     course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    chapter_id = Column(Integer, ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)  # 关联章节，null=课程级对话
     role = Column(String(20), nullable=False)  # user / assistant
     content = Column(Text, nullable=False)
     metadata_json = Column(JSON, default=dict)
@@ -136,6 +140,27 @@ class PptRecordORM(Base):
     course = relationship("CourseORM", back_populates="ppt_records")
 
 
+class PptTemplateORM(Base):
+    """PPT风格模板 - 保存用户常用的风格组合或上传的模板文件"""
+    __tablename__ = "ppt_templates"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(100), nullable=False, default="默认模板")
+    source_type = Column(String(20), default="style_preset")  # style_preset | uploaded_file
+    style = Column(String(50), default="cyan_ink")
+    content_density = Column(String(20), default="moderate")
+    image_style = Column(String(20), default="icons")
+    style_custom = Column(Text, default="")
+    stored_path = Column(String(500), default="")
+    layout_patterns = Column(JSON, default=dict)
+    bg_image_path = Column(String(500), default="")
+    has_analysis = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = relationship("CourseORM", back_populates="ppt_templates")
+
+
 class KnowledgePointORM(Base):
     """知识点（持久化，支持手动编辑与跨教案复用）
 
@@ -165,6 +190,19 @@ class KnowledgePointORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     course = relationship("CourseORM", back_populates="knowledge_points")
+
+
+class LessonVersionORM(Base):
+    """教案版本历史（类似 Git 的快照管理）"""
+    __tablename__ = "lesson_versions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    plan_json = Column(JSON, default=dict)
+    description = Column(String(200), default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lesson = relationship("LessonORM", backref=backref("versions", cascade="all, delete-orphan"))
 
 
 class LessonTemplateORM(Base):
@@ -197,6 +235,153 @@ class TextbookChunkORM(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     material = relationship("MaterialORM", backref="chunks")
+
+
+class ScheduleORM(Base):
+    """教学日历计划（按周/天/节次安排教学内容）"""
+    __tablename__ = "schedules"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
+    chapter_id = Column(Integer, ForeignKey("chapters.id", ondelete="SET NULL"), nullable=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True)
+    week_number = Column(Integer, nullable=False, comment="教学周次 1-20")
+    day_of_week = Column(Integer, nullable=False, comment="星期 1=周一~5=周五")
+    period = Column(String(50), default="", comment="节次，如'第1-2节'")
+    content = Column(String(500), default="", comment="教学内容简述")
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = relationship("CourseORM", backref=backref("schedules", cascade="all, delete-orphan"))
+    chapter = relationship("ChapterORM", backref="schedules")
+    lesson = relationship("LessonORM", backref="schedules")
+
+
+class MarketResourceORM(Base):
+    """教学资源市场（模板、教案、课件交易/共享）"""
+    __tablename__ = "market_resources"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, default="")
+    category = Column(String(50), nullable=False, comment="template / lesson / courseware")
+    resource_type = Column(String(50), default="", comment="子分类：教案模板/PPT模板/完整教案/课件等")
+    content_json = Column(JSON, default=dict)
+    author = Column(String(100), default="", comment="上传者/作者")
+    rating = Column(Integer, default=0, comment="评分总和")
+    rating_count = Column(Integer, default=0, comment="评分人数")
+    download_count = Column(Integer, default=0, comment="下载/导入次数")
+    source_course_id = Column(Integer, nullable=True, comment="来源课程ID")
+    source_lesson_id = Column(Integer, nullable=True, comment="来源教案ID")
+    tags = Column(String(500), default="", comment="标签，逗号分隔")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============ AI 智能体工作流编排 ============
+class WorkflowORM(Base):
+    """工作流定义"""
+    __tablename__ = "workflows"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, default="")
+    course_id = Column(Integer, ForeignKey("courses.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    course = relationship("CourseORM", backref="workflows")
+    steps = relationship("WorkflowStepORM", back_populates="workflow", cascade="all,delete-orphan", order_by="WorkflowStepORM.sort_order")
+
+
+class WorkflowStepORM(Base):
+    """工作流步骤定义"""
+    __tablename__ = "workflow_steps"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    sort_order = Column(Integer, default=0, comment="步骤顺序")
+    agent_type = Column(String(50), nullable=False, comment="Agent类型: extract_knowledge/smart_extract/generate_lesson/generate_lesson_addie/evaluate_lesson/generate_ppt/chat_modify")
+    label = Column(String(200), default="", comment="步骤显示名称")
+    config_json = Column(JSON, default=dict, comment="Agent配置参数")
+    position_x = Column(Integer, default=0, comment="画布X坐标")
+    position_y = Column(Integer, default=0, comment="画布Y坐标")
+    input_mapping = Column(JSON, default=dict, comment="输入映射: {step_input_key: '{{step_id.output_key}}'}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    workflow = relationship("WorkflowORM", back_populates="steps")
+
+
+class WorkflowExecutionORM(Base):
+    """工作流执行记录"""
+    __tablename__ = "workflow_executions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workflow_id = Column(Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False)
+    status = Column(String(20), default="pending", comment="pending/running/completed/failed/paused")
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    error = Column(Text, default="")
+    result_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    workflow = relationship("WorkflowORM", backref="executions")
+    step_executions = relationship("WorkflowStepExecutionORM", back_populates="execution", cascade="all,delete-orphan")
+
+
+class WorkflowStepExecutionORM(Base):
+    """工作流步骤执行记录"""
+    __tablename__ = "workflow_step_executions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    execution_id = Column(Integer, ForeignKey("workflow_executions.id", ondelete="CASCADE"), nullable=False)
+    step_id = Column(Integer, ForeignKey("workflow_steps.id", ondelete="SET NULL"), nullable=True)
+    sort_order = Column(Integer, default=0)
+    agent_type = Column(String(50), nullable=False)
+    label = Column(String(200), default="")
+    status = Column(String(20), default="pending", comment="pending/running/completed/failed/skipped")
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    input_json = Column(JSON, default=dict)
+    output_json = Column(JSON, default=dict)
+    error = Column(Text, default="")
+
+    execution = relationship("WorkflowExecutionORM", back_populates="step_executions")
+
+
+class ShareCodeORM(Base):
+    """教案分享码"""
+    __tablename__ = "share_codes"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False)
+    code = Column(String(8), unique=True, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lesson = relationship("LessonORM", backref=backref("share_codes", cascade="all, delete-orphan"))
+
+
+class CommentORM(Base):
+    """教案评论"""
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False)
+    author = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lesson = relationship("LessonORM", backref=backref("comments", cascade="all, delete-orphan"))
+
+
+class ApprovalORM(Base):
+    """教案审批"""
+    __tablename__ = "approvals"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False, unique=True)
+    status = Column(String(20), default="draft")
+    submitted_by = Column(String(50), default="")
+    submitted_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String(50), default="")
+    reviewed_at = Column(DateTime, nullable=True)
+    review_comment = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lesson = relationship("LessonORM", backref=backref("approval", cascade="all, delete-orphan"))
 
 
 # ============ 引擎 ============
@@ -282,6 +467,10 @@ async def init_db() -> None:
                 sync_conn.execute(__import__("sqlalchemy").text(
                     "ALTER TABLE courses ADD COLUMN last_extracted_at DATETIME"
                 ))
+            if "is_pinned" not in course_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE courses ADD COLUMN is_pinned BOOLEAN DEFAULT 0"
+                ))
             # 为 materials 新增 version_label 和 is_primary 列(多教材版本管理)
             mat_cols = [c["name"] for c in inspector.get_columns("materials")]
             if "version_label" not in mat_cols:
@@ -291,6 +480,38 @@ async def init_db() -> None:
             if "is_primary" not in mat_cols:
                 sync_conn.execute(__import__("sqlalchemy").text(
                     "ALTER TABLE materials ADD COLUMN is_primary BOOLEAN DEFAULT 0"
+                ))
+            # 为 chat_messages 添加 chapter_id 列
+            chat_cols = [c["name"] for c in inspector.get_columns("chat_messages")]
+            if "chapter_id" not in chat_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE chat_messages ADD COLUMN chapter_id INTEGER DEFAULT NULL"
+                ))
+            # 为 lesson_versions 创建表
+            tables = inspector.get_table_names()
+            if "lesson_versions" not in tables:
+                LessonVersionORM.__table__.create(sync_conn)
+            # 为 ppt_templates 添加 source_type, stored_path, layout_patterns, bg_image_path, has_analysis 列
+            pt_cols = [c["name"] for c in inspector.get_columns("ppt_templates")]
+            if "source_type" not in pt_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ppt_templates ADD COLUMN source_type VARCHAR(20) DEFAULT 'style_preset'"
+                ))
+            if "stored_path" not in pt_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ppt_templates ADD COLUMN stored_path VARCHAR(500) DEFAULT ''"
+                ))
+            if "layout_patterns" not in pt_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ppt_templates ADD COLUMN layout_patterns TEXT DEFAULT '{}'"
+                ))
+            if "bg_image_path" not in pt_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ppt_templates ADD COLUMN bg_image_path VARCHAR(500) DEFAULT ''"
+                ))
+            if "has_analysis" not in pt_cols:
+                sync_conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE ppt_templates ADD COLUMN has_analysis BOOLEAN DEFAULT 0"
                 ))
         await conn.run_sync(_migrate)
 

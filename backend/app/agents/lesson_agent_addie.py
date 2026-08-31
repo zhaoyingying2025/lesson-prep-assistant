@@ -190,8 +190,8 @@ async def generate_lesson_with_addie(
     )
     # 学情块插入到知识点块之前，让模型在生成 stages 时参考
     user_prompt_with_learner = user_prompt.replace(
-        "===== 已提取知识点（含教材页码） =====",
-        learner_context_block + "===== 已提取知识点（含教材页码） =====",
+        "===== 已提取知识点 =====",
+        learner_context_block + "===== 已提取知识点 =====",
     ) if learner_context_block else user_prompt
 
     system_prompt = inject_domain_context(LESSON_SYSTEM, subject)

@@ -1,1202 +1,1872 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ app_title }}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <!-- markmap 思维导图 -->
-  <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.16.3/dist/browser/index.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.16.3/dist/browser/index.js"></script>
-  <!-- cytoscape 知识图谱 (借鉴 leo-live-book) -->
-  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            // 青绿水墨配色
-            ink: '#2c1810',       // 墨色
-            'ink-2': '#5a4030',    // 浅墨
-            muted: '#8a7968',      // 灰墨
-            teal: {
-              50: '#f0f7f5',
-              100: '#d9ebe6',
-              200: '#b3d7cd',
-              300: '#7fbab0',
-              400: '#4a9d8f',
-              500: '#2e7d6e',     // 主青绿
-              600: '#236658',
-              700: '#1c5247',
-              800: '#173f37',
-              900: '#0f2b25',
-            },
-            ochre: '#c75c2e',      // 赭石
-            paper: '#faf8f5',      // 宣纸白
-            'paper-2': '#f3efe8',
-            rule: 'rgba(44,24,16,0.10)',
-          },
-          fontFamily: {
-            sans: ['"Noto Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
-            serif: ['"Noto Serif SC"', 'serif'],
-          },
-          boxShadow: {
-            'soft': '0 2px 8px rgba(44,24,16,0.06)',
-            'md-soft': '0 8px 32px rgba(44,24,16,0.08)',
-          }
-        }
-      }
-    }
-  </script>
-  <link rel="stylesheet" href="/static/css/style.css">
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <meta name="theme-color" content="#2e7d6e">
+ <link rel="manifest" href="/static/manifest.json">
+ <title>{{ app_title}}</title>
+ <script src="https://cdn.tailwindcss.com"></script>
+ <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+ <!-- markmap 思维导图 -->
+ <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.16.3/dist/browser/index.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/markmap-view@0.16.3/dist/browser/index.js"></script>
+ <!-- cytoscape 知识图谱 (借鉴 leo-live-book) -->
+ <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+ <script>
+ tailwind.config = {
+ theme: {
+ extend: {
+ colors: {
+ // 青绿水墨配色
+ ink: '#2c1810', // 墨色
+ 'ink-2': '#5a4030', // 浅墨
+ muted: '#8a7968', // 灰墨
+ teal: {
+ 50: '#f0f7f5',
+ 100: '#d9ebe6',
+ 200: '#b3d7cd',
+ 300: '#7fbab0',
+ 400: '#4a9d8f',
+ 500: '#2e7d6e', // 主青绿
+ 600: '#236658',
+ 700: '#1c5247',
+ 800: '#173f37',
+ 900: '#0f2b25',
+},
+ ochre: '#c75c2e', // 赭石
+ paper: '#faf8f5', // 宣纸白
+ 'paper-2': '#f3efe8',
+ rule: 'rgba(44,24,16,0.10)',
+},
+ fontFamily: {
+ sans: ['"Noto Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+ serif: ['"Noto Serif SC"', 'serif'],
+},
+ boxShadow: {
+ 'soft': '0 2px 8px rgba(44,24,16,0.06)',
+ 'md-soft': '0 8px 32px rgba(44,24,16,0.08)',
+}
+}
+}
+}
+ </script>
+ <link rel="stylesheet" href="/static/css/style.css?v=20260831">
 </head>
 
 <body class="bg-paper text-ink h-screen overflow-hidden flex flex-col">
 
 <!-- ========== 顶部导航 ========== -->
 <header class="flex-shrink-0 bg-white/80 backdrop-blur-md border-b border-rule px-5 py-2.5 flex items-center justify-between" style="position: relative; z-index: 100;">
-  <div class="flex items-center gap-3">
-    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center text-white font-serif font-bold text-lg shadow-soft">
-      备
-    </div>
-    <div>
-      <h1 class="font-serif font-bold text-base text-ink leading-tight">备课助手 · 智能备课伴侣</h1>
-      <p class="text-[10px] text-muted leading-tight">遵循"宏观→微观"备课逻辑 · 六阶段教案 · 多模型可选</p>
-    </div>
-  </div>
+ <div class="flex items-center gap-3">
+ <svg class="w-9 h-9 flex-shrink-0" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+ <defs>
+ <linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1">
+ <stop offset="0%" stop-color="#2e7d6e"/>
+ <stop offset="100%" stop-color="#1c5247"/>
+ </linearGradient>
+ </defs>
+ <rect width="36" height="36" rx="8" fill="url(#logoBg)"/>
+ <path d="M10 24V12a2 2 0 012-2h4a2 2 0 012 2v12l-4-2.5L10 24z" fill="white" opacity="0.9"/>
+ <path d="M18 24V12a2 2 0 012-2h4a2 2 0 012 2v12l-4-2.5L18 24z" fill="white" opacity="0.7"/>
+ <path d="M14 10V8a1 1 0 011-1h6a1 1 0 011 1v2" stroke="white" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+ <circle cx="18" cy="15" r="1.5" fill="#2e7d6e" opacity="0.8"/>
+ </svg>
+ <button id="sidebarToggleBtn" class="hidden items-center justify-center w-8 h-8 rounded-lg text-teal-600 hover:bg-teal-50 flex-shrink-0" title="展开侧栏">
+ <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+ </button>
+ <div>
+ <h1 class="font-serif font-bold text-base text-ink leading-tight">备课助手</h1>
+ </div>
+ </div>
 
-  <div class="flex items-center gap-3">
-    <div id="apiStatus" class="flex items-center gap-1.5 text-xs text-muted">
-      <span class="w-1.5 h-1.5 rounded-full bg-gray-400 breathing"></span>
-      <span>检查API中...</span>
-    </div>
-    <button id="togglePreview" class="btn-ghost px-3 py-1 rounded-md text-xs">显隐预览</button>
-    <div class="relative">
-      <button id="themeBtn" class="btn-ghost px-2.5 py-1 rounded-md text-xs flex items-center gap-1" title="界面风格">
-        <span id="themeIcon">🎨</span>
-        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-      </button>
-      <div id="themeDropdown" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-rule py-1 min-w-[140px] text-xs" style="z-index: 9999;">
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="light">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 border border-teal-200 inline-block flex-shrink-0"></span>
-          <span>青绿水墨</span>
-          <span class="ml-auto theme-check text-teal-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="warm">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 border border-amber-200 inline-block flex-shrink-0"></span>
-          <span>暖阳赭石</span>
-          <span class="ml-auto theme-check text-amber-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="paper">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-yellow-100 to-amber-200 border border-yellow-300 inline-block flex-shrink-0"></span>
-          <span>护眼米黄</span>
-          <span class="ml-auto theme-check text-amber-700 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ocean">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 border border-blue-200 inline-block flex-shrink-0"></span>
-          <span>静湖蓝调</span>
-          <span class="ml-auto theme-check text-blue-600 hidden">✓</span>
-        </div>
-        <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ink">
-          <span class="w-4 h-4 rounded-full bg-gradient-to-br from-gray-600 to-gray-900 border border-gray-400 inline-block flex-shrink-0"></span>
-          <span>墨韵黑白</span>
-          <span class="ml-auto theme-check text-gray-600 hidden">✓</span>
-        </div>
-      </div>
-    </div>
-    <span id="modelBadge" class="text-xs text-muted">模型: <span class="text-teal-600 font-medium">未配置</span></span>
-    <button id="tutorialBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="新手教程">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      <span>新手教程</span>
-    </button>
-    <button id="settingsBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="LLM 设置">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      <span>设置</span>
-    </button>
-  </div>
+ <div class="flex items-center gap-3">
+ <div id="apiStatus" class="flex items-center gap-1.5 text-xs text-muted">
+ <span class="w-1.5 h-1.5 rounded-full bg-gray-400 breathing"></span>
+ <span>检查API中...</span>
+ </div>
+ <div id="offlineIndicator" class="hidden flex items-center gap-1.5 text-xs text-red-500 bg-red-50 px-2 py-1 rounded-md">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m-2.829-2.829a5 5 0 000-7.07m-4.243 4.243a1 1 0 010-1.414"/></svg>
+ <span>离线模式</span>
+ </div>
+ <button id="togglePreview" class="btn-ghost px-3 py-1 rounded-md text-xs">显隐预览</button>
+ <div class="relative">
+ <button id="themeBtn" class="btn-ghost px-2.5 py-1 rounded-md text-xs flex items-center gap-1" title="界面风格">
+ <span id="themeIcon"></span>
+ <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+ </button>
+ <div id="themeDropdown" class="hidden absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-rule py-1 min-w-[140px] text-xs" style="z-index: 9999;">
+ <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="light">
+ <span class="w-4 h-4 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 border border-teal-200 inline-block flex-shrink-0"></span>
+ <span>青绿水墨</span>
+ <span class="ml-auto theme-check text-teal-600 hidden"></span>
+ </div>
+ <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="warm">
+ <span class="w-4 h-4 rounded-full bg-gradient-to-br from-amber-300 to-orange-500 border border-amber-200 inline-block flex-shrink-0"></span>
+ <span>暖阳赭石</span>
+ <span class="ml-auto theme-check text-amber-600 hidden"></span>
+ </div>
+ <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="paper">
+ <span class="w-4 h-4 rounded-full bg-gradient-to-br from-yellow-100 to-amber-200 border border-yellow-300 inline-block flex-shrink-0"></span>
+ <span>护眼米黄</span>
+ <span class="ml-auto theme-check text-amber-700 hidden"></span>
+ </div>
+ <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ocean">
+ <span class="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 border border-blue-200 inline-block flex-shrink-0"></span>
+ <span>静湖蓝调</span>
+ <span class="ml-auto theme-check text-blue-600 hidden"></span>
+ </div>
+ <div class="theme-option px-3 py-2 cursor-pointer hover:bg-teal-50 flex items-center gap-2" data-theme="ink">
+ <span class="w-4 h-4 rounded-full bg-gradient-to-br from-gray-600 to-gray-900 border border-gray-400 inline-block flex-shrink-0"></span>
+ <span>墨韵黑白</span>
+ <span class="ml-auto theme-check text-gray-600 hidden"></span>
+ </div>
+ </div>
+ </div>
+ <span id="modelBadge" class="text-xs text-muted">模型: <span class="text-teal-600 font-medium">未配置</span></span>
+ <button id="tutorialBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="新手教程">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+ <span>新手教程</span>
+ </button>
+ <button id="settingsBtn" class="btn-ghost px-3 py-1 rounded-md text-xs flex items-center gap-1" title="LLM 设置">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+ <span>设置</span>
+ </button>
+ </div>
 </header>
 
 <!-- ========== 主体三栏 ========== -->
 <div class="flex-1 flex overflow-hidden">
 
-  <!-- ====== 左栏：课程 + 章节树 ====== -->
-  <aside id="leftPanel" class="flex-shrink-0 bg-white/60 backdrop-blur-sm flex flex-col" style="flex: 0 0 256px; min-width: 180px; max-width: 500px;">
-    <!-- 课程列表 -->
-    <div class="p-3 border-b border-rule">
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">课程空间</h2>
-        <button id="newCourseBtn" class="text-teal-600 hover:bg-teal-50 rounded p-1" title="新建课程">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        </button>
-      </div>
-      <div id="courseList" class="space-y-1 max-h-40 overflow-y-auto">
-        <div class="text-xs text-muted text-center py-3">点击 + 创建课程</div>
-      </div>
-    </div>
+ <!-- 侧栏遮罩（平板） -->
+ <div id="sidebarOverlay"></div>
+ <!-- 预览遮罩（平板） -->
+ <div id="previewOverlay"></div>
 
-    <!-- 当前课程信息 + 章节树 -->
-    <div id="courseInfo" class="flex-1 flex flex-col overflow-hidden hidden">
-      <!-- 课程标题栏 -->
-      <div class="px-3 py-2 border-b border-rule">
-        <div class="text-[10px] text-muted mb-0.5">当前课程</div>
-        <div class="flex items-center justify-between gap-2">
-          <div id="currentCourseName" class="font-serif font-semibold text-sm text-ink truncate flex-1"></div>
-          <div class="relative flex gap-2 items-center flex-shrink-0">
-            <button id="smartExtractBtn" class="btn-ghost px-2 py-1 text-xs rounded flex items-center gap-1" title="一键提取知识点（选择教材）" disabled>
-              <span>📖</span><span>提知</span>
-            </button>
-            <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5" title="新建章">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            </button>
-          </div>
-        </div>
-        <div id="currentCourseMeta" class="text-[11px] text-muted mt-0.5"></div>
-      </div>
+ <!-- ====== 左栏：课程 + 章节树 ====== -->
+ <aside id="leftPanel" class="flex-shrink-0 bg-white/60 backdrop-blur-sm flex flex-col" style="flex: 0 0 256px; min-width: 180px; max-width: 500px;">
+ <!-- 课程列表 -->
+ <div class="p-3 border-b border-rule">
+ <div class="flex items-center justify-between mb-2">
+ <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">课程空间</h2>
+ <button id="newCourseBtn" class="text-teal-600 hover:bg-teal-50 rounded p-1" title="新建课程">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+ </button>
+ </div>
+ <div class="relative mb-2">
+ <input id="courseSearchInput" type="text" placeholder="搜索课程..." class="w-full text-xs border border-rule rounded-md px-2 py-1.5 pl-7 bg-white/70 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-200 transition-colors">
+ <svg class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+ </div>
+ <div id="courseList" class="space-y-1 max-h-40 overflow-y-auto">
+ <div class="text-xs text-muted text-center py-3">点击 + 创建课程</div>
+ </div>
+ <!-- 课程列表骨架屏 -->
+ <div id="courseSkeleton" class="hidden space-y-2 px-1">
+ <div class="skeleton skeleton-card"></div>
+ <div class="skeleton skeleton-card" style="height:52px;"></div>
+ <div class="skeleton skeleton-card" style="height:48px;"></div>
+ </div>
+ </div>
 
-      <!-- 章节树 -->
-      <div class="flex-1 overflow-y-auto px-2 py-2" id="chapterTreeSection">
-        <div class="text-[10px] text-muted uppercase tracking-wider mb-1 px-1">章节结构</div>
-        <div id="chapterTree" class="chapter-tree">
-          <div class="text-xs text-muted text-center py-3">点击 + 新建第一章</div>
-        </div>
-      </div>
+ <!-- 当前课程信息 + 章节树 -->
+ <div id="courseInfo" class="flex-1 flex flex-col overflow-hidden hidden">
+ <!-- 课程标题栏 -->
+ <div class="px-3 py-2 border-b border-rule">
+ <div class="text-[10px] text-muted mb-0.5">当前课程</div>
+ <div class="flex items-center justify-between gap-2">
+ <div id="currentCourseName" class="font-serif font-semibold text-sm text-ink truncate flex-1"></div>
+ <div class="relative flex gap-2 items-center flex-shrink-0">
+ <button id="smartExtractBtn" class="btn-ghost px-2 py-1 text-xs rounded flex items-center gap-1" title="一键提取知识点（选择教材）" disabled>
+ <span></span><span>提知</span>
+ </button>
+ <button id="courseMenuBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5" title="新建章">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+ </button>
+ </div>
+ </div>
+ <div id="currentCourseMeta" class="text-[11px] text-muted mt-0.5"></div>
+ </div>
 
-      <!-- 垂直拖拽分隔条 -->
-      <div class="resizer-h" id="vResizer1"></div>
+ <!-- 章节树 -->
+ <div class="flex-1 overflow-y-auto px-2 py-2" id="chapterTreeSection">
+ <div class="text-[10px] text-muted uppercase tracking-wider mb-1 px-1">章节结构</div>
+ <div id="chapterTree" class="chapter-tree">
+ <div class="text-xs text-muted text-center py-3">点击 + 新建第一章</div>
+ </div>
+ <!-- 章节树骨架屏 -->
+ <div id="chapterSkeleton" class="hidden space-y-2 px-1">
+ <div class="flex items-center gap-2"><div class="skeleton skeleton-circle"></div><div class="skeleton skeleton-line flex-1"></div></div>
+ <div class="flex items-center gap-2" style="padding-left:20px;"><div class="skeleton" style="width:20px;height:20px;border-radius:50%;"></div><div class="skeleton skeleton-line flex-1"></div></div>
+ <div class="flex items-center gap-2" style="padding-left:20px;"><div class="skeleton" style="width:20px;height:20px;border-radius:50%;"></div><div class="skeleton skeleton-line flex-1" style="width:70%;"></div></div>
+ <div class="flex items-center gap-2"><div class="skeleton skeleton-circle"></div><div class="skeleton skeleton-line flex-1" style="width:55%;"></div></div>
+ </div>
+ </div>
 
-      <!-- 下方区域整体包裹：当章节树区域高度固定时，此容器通过 flex-1 自然延伸填充剩余空间 -->
-      <div id="belowChapters" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+ <!-- 垂直拖拽分隔条 -->
+ <div class="resizer-h" id="vResizer1"></div>
 
-        <!-- 教案记录 -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="lesson" id="lessonSection">
-          <div class="px-3 py-2 flex items-center justify-between">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教案记录 <span id="lessonCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadLessonBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="lessonList" class="max-h-40 overflow-y-auto px-3 pb-2 space-y-1">
-            <div class="text-xs text-muted text-center py-2">点击章节查看教案</div>
-          </div>
-        </div>
-        <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+ <!-- 下方区域整体包裹：当章节树区域高度固定时，此容器通过 flex-1 自然延伸填充剩余空间 -->
+ <div id="belowChapters" class="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-        <!-- 垂直拖拽分隔条 -->
-        <div class="resizer-h flex-shrink-0" id="vResizer2"></div>
+ <!-- 教学日历 -->
+ <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="schedule" id="scheduleSection">
+ <div class="px-3 py-2 flex items-center justify-between sidebar-section-header">
+     <div class="flex items-center gap-1 flex-1 min-w-0">
+     <span class="collapse-btn cursor-pointer select-none text-muted hover:text-teal-600" title="折叠/展开此区域" data-section="schedule">▼</span>
+     <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+     <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教学日历 <span id="scheduleCount" class="text-teal-600"></span></h2>
+     </div>
+     <button id="openScheduleBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 text-[10px] font-medium" title="查看教学日历"> 日历</button>
+     </div>
+ <div id="scheduleSummary" class="px-3 pb-2 text-xs text-muted max-h-24 overflow-y-auto">
+ <div class="text-center py-2">选择课程后查看教学日历</div>
+ </div>
+ </div>
 
-        <!-- PPT记录 -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0" data-section="ppt" id="pptSection">
-          <div class="px-3 py-2 flex items-center justify-between">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">PPT记录 <span id="pptCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadPptBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传本地PPT文件 (PPTX)" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="pptList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1">
-            <div class="text-xs text-muted text-center py-2">生成教案后可生成PPT</div>
-          </div>
-        </div>
-        <input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+ <!-- 垂直拖拽分隔条 日历 ↔ 教材 -->
+ <div class="resizer-h flex-shrink-0" id="vResizer4"></div>
 
-        <!-- 垂直拖拽分隔条 -->
-        <div class="resizer-h flex-shrink-0" id="vResizer3"></div>
+ <!-- 教材资源（紧凑折叠区） -->
+ <div class="border-t border-rule sidebar-section flex-shrink-0 flex-1 min-h-0 flex flex-col overflow-hidden" data-section="material" id="materialSection">
+ <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40 flex-shrink-0 sidebar-section-header" id="materialHeader">
+     <div class="flex items-center gap-1 flex-1 min-w-0">
+     <span class="collapse-btn cursor-pointer select-none text-muted hover:text-teal-600" title="折叠/展开此区域" data-section="material">▼</span>
+     <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
+ <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
+ </div>
+ <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded px-1.5 py-0.5 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1 text-xs" title="上传教材" disabled>
+     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+     <span>上传</span></button>
+ </div>
+ <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1 flex-1 min-h-0">
+ <div class="text-xs text-muted text-center py-2">请先选择课程</div>
+ </div>
+ <!-- 教材资源骨架屏 -->
+ <div id="materialSkeleton" class="hidden px-3 pb-2 space-y-2">
+ <div class="skeleton skeleton-card" style="height:44px;"></div>
+ <div class="skeleton skeleton-card" style="height:40px;"></div>
+ </div>
+ </div>
 
-        <!-- 教材资源（紧凑折叠区） -->
-        <div class="border-t border-rule sidebar-section flex-shrink-0 flex-1 min-h-0 flex flex-col overflow-hidden" data-section="material" id="materialSection">
-          <div class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-teal-50/40 flex-shrink-0" id="materialHeader">
-            <div class="flex items-center gap-1 flex-1 min-w-0">
-              <span class="drag-handle cursor-grab text-muted/40 hover:text-muted/70 select-none" title="拖拽排序">⠿</span>
-              <h2 class="text-[10px] font-semibold text-muted uppercase tracking-wider">教材资源 <span id="materialCount" class="text-teal-600"></span></h2>
-            </div>
-            <button id="uploadBtn" class="text-teal-600 hover:bg-teal-50 rounded p-0.5 disabled:opacity-30 disabled:cursor-not-allowed" title="上传教材" disabled>
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </button>
-          </div>
-          <div id="materialList" class="max-h-32 overflow-y-auto px-3 pb-2 space-y-1 flex-1 min-h-0">
-            <div class="text-xs text-muted text-center py-2">请先选择课程</div>
-          </div>
-        </div>
+ </div>
+ <!-- /belowChapters 结束 -->
+ </div>
+ </aside>
 
-      </div>
-      <!-- /belowChapters 结束 -->
-    </div>
-  </aside>
+ <!-- 拖动分隔条 1 -->
+ <div id="resizer1" class="resizer"></div>
 
-  <!-- 拖动分隔条 1 -->
-  <div id="resizer1" class="resizer"></div>
+ <!-- ====== 中栏：对话区 ====== -->
+ <main id="middlePanel" class="flex-shrink-0 flex flex-col bg-paper/40 min-w-0" style="flex: 1 1 400px; min-width: 300px;">
+ <!-- Stepper 步骤条 -->
+ <div id="stepBar" class="flex-shrink-0 bg-white/70 backdrop-blur-sm border-b border-rule">
+ <div class="stepper-bar">
+ <div class="stepper-step" data-step="1">
+ <div class="stepper-circle active">1</div>
+ <span class="stepper-label active">课程设置</span>
+ </div>
+ <div class="stepper-connector"></div>
+ <div class="stepper-step" data-step="2">
+ <div class="stepper-circle">2</div>
+ <span class="stepper-label">提取知识点</span>
+ </div>
+ <div class="stepper-connector"></div>
+ <div class="stepper-step" data-step="3">
+ <div class="stepper-circle">3</div>
+ <span class="stepper-label">生成教案</span>
+ </div>
+ </div>
+ <div class="stepper-subtitle" id="stepSubtitle">选择或创建一个课程开始备课</div>
+ <button id="previewToggleBtn" class="hidden items-center gap-1 px-2 py-1 rounded text-xs text-teal-600 hover:bg-teal-50 flex-shrink-0" title="打开教案预览">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+ <span>预览</span>
+ </button>
+ </div>
 
-  <!-- ====== 中栏：对话区 ====== -->
-  <main id="middlePanel" class="flex-shrink-0 flex flex-col bg-paper/40 min-w-0" style="flex: 1 1 400px; min-width: 300px;">
-    <!-- 章节输入条 -->
-    <div id="chapterBar" class="flex-shrink-0 bg-white/70 backdrop-blur-sm border-b border-rule px-4 py-2.5 flex items-center gap-3">
-      <div class="flex-1 flex items-center gap-2">
-        <label class="text-xs text-muted whitespace-nowrap">本次章节：</label>
-        <input id="chapterInput" type="text" placeholder="如：第三章 数据链路层 - CSMA/CD协议"
-               class="input-ink flex-1 px-3 py-1.5 rounded-md text-sm">
-      </div>
-      <button id="extractBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ① 提取知识点
-      </button>
-      <button id="lessonParamsBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap" title="教案参数配置">
-        ⚙ 参数
-      </button>
-      <label class="flex items-center gap-1 text-[10px] text-muted cursor-pointer select-none whitespace-nowrap" title="启用 ADDIE 多智能体审议：学情分析→生成→自评→精修，质量更高但耗时更长">
-        <input id="addieModeCheckbox" type="checkbox" class="w-3 h-3 accent-teal-600">
-        <span>ADDIE审议</span>
-      </label>
-      <button id="genLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ② 生成教案
-      </button>
-      <button id="genPptBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-        ③ 生成PPT
-      </button>
-    </div>
+ <!-- Step 1: 课程设置（空状态引导） -->
+ <div id="step1Content" class="step-content active">
+ <div class="empty-state" style="flex:1;justify-content:center;min-height:360px;">
+ <svg class="empty-state-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5">
+ <circle cx="40" cy="40" r="32" stroke="currentColor" fill="none" opacity="0.3"/>
+ <path d="M28 38l8 8 16-16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M40 16v8M40 56v8M16 40h8M56 40h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+ </svg>
+ <div class="empty-state-title">欢迎使用备课助手</div>
+ <div class="empty-state-desc">在左侧「课程空间」创建或选择一个课程，<br>上传教材并搭建章节结构，即可开始备课</div>
+ <div class="empty-state-actions">
+ <button id="step1NewCourseBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">+ 新建课程</button>
+ </div>
+ </div>
+ </div>
 
-    <!-- 教案参数面板（可折叠） -->
-    <div id="lessonParamsPanel" class="flex-shrink-0 bg-paper-2/60 border-b border-rule hidden">
-      <div class="px-4 py-3 grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-        <div>
-          <label class="text-muted block mb-1">课时时长（分钟）</label>
-          <select id="paramTotalMinutes" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="15">15 分钟（微课）</option>
-            <option value="30">30 分钟（短课）</option>
-            <option value="45">45 分钟（标准）</option>
-            <option value="60">60 分钟（双节）</option>
-            <option value="90" selected>90 分钟（大节）</option>
-            <option value="120">120 分钟（半天）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">导入方式</label>
-          <select id="paramIntroStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="auto" selected>智能匹配</option>
-            <option value="scenario">情境导入</option>
-            <option value="question">问题驱动</option>
-            <option value="case">案例分析</option>
-            <option value="review">温故知新</option>
-            <option value="media">多媒体</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">语言风格</label>
-          <select id="paramLanguageStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="plain" selected>通俗</option>
-            <option value="academic">学术</option>
-            <option value="humorous">幽默</option>
-            <option value="concise">简洁</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">案例密度</label>
-          <select id="paramCaseDensity" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="low">低（少而精）</option>
-            <option value="medium" selected>中（适量）</option>
-            <option value="high">高（密集巩固）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">互动频率</label>
-          <select id="paramInteractFreq" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="low">低</option>
-            <option value="medium" selected>中</option>
-            <option value="high">高（翻转课堂）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">难度定位</label>
-          <select id="paramDifficulty" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="lower">略低于学生水平</option>
-            <option value="match" selected>匹配学生水平</option>
-            <option value="higher">拔高拓展</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">作业分层</label>
-          <select id="paramHomeworkLayers" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="0">不分层</option>
-            <option value="2">两层（基础+提升）</option>
-            <option value="3" selected>三层（基础+提升+探究）</option>
-          </select>
-        </div>
-        <div>
-          <label class="text-muted block mb-1">板书设计</label>
-          <select id="paramBoardDesign" class="input-ink w-full px-2 py-1 rounded text-xs">
-            <option value="true" selected>生成</option>
-            <option value="false">不生成</option>
-          </select>
-        </div>
-        <div class="flex items-end gap-2">
-          <button id="resetParamsBtn" class="btn-ghost px-2 py-1 rounded text-xs">恢复默认</button>
-          <button id="closeParamsBtn" class="btn-ghost px-2 py-1 rounded text-xs">收起</button>
-        </div>
-      </div>
-    </div>
+ <!-- Step 2: 提取知识点 -->
+ <div id="step2Content" class="step-content" style="display:none;">
+ <div id="chapterBar" class="flex-shrink-0 bg-white/70 backdrop-blur-sm border-b border-rule px-4 py-2.5 flex items-center gap-3">
+ <div class="flex-1 flex items-center gap-2">
+ <label class="text-xs text-muted whitespace-nowrap">本次章节：</label>
+ <input id="chapterInput" type="text" placeholder="如：第三章 数据链路层 - CSMA/CD协议"
+ class="input-ink flex-1 px-3 py-1.5 rounded-md text-sm">
+ </div>
+ <button id="extractBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+ ① 提取知识点
+ </button>
+ </div>
+ </div>
 
-    <!-- 知识点面板（可折叠） -->
-    <div id="knowledgePanel" class="flex-shrink-0 bg-teal-50/50 border-b border-teal-200 hidden max-h-56 overflow-y-auto">
-      <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-teal-50/95 backdrop-blur-sm">
-        <h3 class="text-xs font-semibold text-teal-700">📚 已提取知识点 <span id="kpCount" class="ml-1 text-teal-600"></span></h3>
-        <div class="flex items-center gap-2">
-          <button id="knowledgeGraphBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="打开知识图谱视图">📊 知识图谱</button>
-          <button id="exportKpXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="按模板导出知识点到XLSX">📥 导出XLSX</button>
-          <button id="addKpBtn" class="text-teal-600 hover:bg-teal-100 rounded px-2 py-0.5 text-xs" title="手动新增知识点">+ 新增</button>
-          <button id="closeKp" class="text-teal-600 hover:text-teal-800 text-xs">×</button>
-        </div>
-      </div>
-      <div id="kpContainer" class="px-4 py-2 grid grid-cols-1 gap-1.5"></div>
-    </div>
+ <!-- Step 3: 生成教案 -->
+ <div id="step3Content" class="step-content" style="display:none;">
+ <div id="lessonBar" class="flex-shrink-0 bg-white/70 backdrop-blur-sm border-b border-rule px-4 py-2.5 flex items-center gap-3">
+ <div class="flex-1 flex items-center gap-2 min-w-0">
+ <label class="text-xs text-muted whitespace-nowrap">当前章节：</label>
+ <span id="lessonBarChapter" class="text-sm text-ink font-medium truncate">未选择</span>
+ </div>
+ <label class="flex items-center gap-1 text-[10px] text-muted cursor-pointer select-none whitespace-nowrap" title="启用 ADDIE 多智能体审议：学情分析→生成→自评→精修，质量更高但耗时更长">
+ <input id="addieModeCheckbox" type="checkbox" class="w-3 h-3 accent-teal-600">
+ <span>ADDIE审议</span>
+ </label>
+ <button id="genLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+  ② 生成教案
+ </button>
+ </div>
+ </div>
 
-    <!-- 对话记录标签（按课程保留） -->
-    <div class="flex-shrink-0 px-4 py-1 bg-teal-50/60 border-b border-rule text-[10px] text-muted text-center">
-      💬 对话记录（按课程保留）
-    </div>
+ <!-- Step 2 & 3 共享内容区域 -->
+ <div id="step23Content" class="flex-1 flex flex-col min-h-0" style="display:none;">
 
-    <!-- 对话消息流 -->
-    <div id="chatStream" class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-      <div id="tutorialGuideCard" class="hidden tutorial-card bg-white/90 rounded-xl border border-teal-200 shadow-soft p-4 fade-in">
-        <div class="font-serif font-semibold text-base text-teal-700 mb-2 flex items-center gap-2">
-          <span>🎉 8步上手备课助手</span>
-        </div>
-        <ol class="space-y-1.5 text-xs text-ink-2 leading-relaxed list-decimal pl-5">
-          <li>左栏「课程空间」→ 点击 + 新建课程</li>
-          <li>选择课程后，当前课程旁点「+」新建章</li>
-          <li>顶部「上传教材」时选择教材类型（课程标准/教科书/教参/练习题/论文/其他）</li>
-          <li>点当前课程旁「📖提知」按钮，勾选教材后一键提取知识点</li>
-          <li>选中章节后点「①提取知识点」完成章节知识映射</li>
-          <li>点「②生成教案」按钮，AI 按模板生成全表格教案</li>
-          <li>在中间对话框对教案提修改意见，微调内容</li>
-          <li>点「③生成PPT」导出课件</li>
-        </ol>
-        <div class="flex justify-end mt-3">
-          <button id="tutorialGuideCloseBtn" class="btn-primary px-3 py-1 rounded text-xs">知道了</button>
-        </div>
-      </div>
-      <div id="chatEmptyState" class="text-center text-xs text-muted py-6">
-        <div class="font-serif text-base text-teal-700 mb-1">备课助手 · 智能备课伴侣</div>
-        <div>遵循"宏观→微观"备课逻辑，按 ① 提取知识点 → ② 生成教案 → ③ 对话微调 顺序操作</div>
-      </div>
-    </div>
+ 
 
-    <!-- 输入区 -->
-    <div class="flex-shrink-0 bg-white/80 backdrop-blur-md border-t border-rule p-3">
-      <div class="flex items-end gap-2">
-        <div class="flex-1 relative">
-          <textarea id="chatInput" rows="2" placeholder="对教案提修改意见，如：把导入换成新闻案例 / 增加一个互动环节 / 缩短知识讲解到30分钟..."
-                    class="input-ink w-full px-3 py-2 rounded-lg text-sm resize-none"></textarea>
-        </div>
-        <button id="sendBtn" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-          发送
-        </button>
-      </div>
-      <div class="flex items-center justify-between mt-1.5 px-1">
-        <div class="text-[10px] text-muted">提示：⏎ 发送 / Shift+⏎ 换行</div>
-        <div class="flex gap-2">
-          <button id="evaluateLessonBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled title="多指标打分 + 双视角评审 (借鉴 instructional_agents)">🔍 评估教案</button>
-          <button id="exportMdBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 Markdown</button>
-          <button id="exportDocxBtn" class="btn-ghost px-2 py-0.5 rounded text-[11px] disabled:opacity-40" disabled>导出 DOCX</button>
-        </div>
-      </div>
-    </div>
-  </main>
+ <!-- 知识点面板（可折叠） -->
+ <div id="knowledgePanel" class="flex-shrink-0 bg-teal-50/50 border-b border-teal-200 hidden max-h-56 overflow-y-auto">
+ <div class="px-4 py-2 flex items-center justify-between sticky top-0 bg-teal-50/95 backdrop-blur-sm">
+ <h3 class="text-xs font-semibold text-teal-700"> 已提取知识点 <span id="kpCount" class="ml-1 text-teal-600"></span></h3>
+ <div class="flex items-center gap-2">
+ <button id="knowledgeGraphBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="打开知识图谱视图"> 知识图谱</button>
+ <button id="exportKpXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="按模板导出知识点到XLSX"> 导出XLSX</button>
+ <button id="addKpBtn" class="text-teal-600 hover:bg-teal-100 rounded px-2 py-0.5 text-xs" title="手动新增知识点">+ 新增</button>
+ <button id="closeKp" class="text-teal-600 hover:text-teal-800 text-xs">×</button>
+ </div>
+ </div>
+ <!-- 批量操作工具栏 -->
+ <div id="kpBatchToolbar" class="hidden px-4 py-1.5 bg-teal-100/60 flex items-center gap-2 text-xs border-b border-teal-200">
+ <label class="flex items-center gap-1 cursor-pointer">
+ <input type="checkbox" id="kpSelectAll" class="rounded border-teal-400 text-teal-600 focus:ring-teal-400 w-3.5 h-3.5">
+ <span class="text-teal-700">全选</span>
+ </label>
+ <span class="text-muted">|</span>
+ <span class="text-teal-600"><span id="kpSelectedCount">0</span> 个已选</span>
+ <span class="text-muted">|</span>
+ <button id="kpBatchDeleteBtn" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled>批量删除</button>
+ <button id="kpBatchMarkKeyBtn" class="text-amber-600 hover:bg-amber-50 px-2 py-0.5 rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled>标记重点</button>
+ <button id="kpBatchMarkDiffBtn" class="text-purple-600 hover:bg-purple-50 px-2 py-0.5 rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled>标记难点</button>
+ <button id="kpBatchMarkExamBtn" class="text-indigo-600 hover:bg-indigo-50 px-2 py-0.5 rounded disabled:opacity-30 disabled:cursor-not-allowed" disabled>标记考点</button>
+ <div class="ml-auto flex items-center gap-1.5">
+ <button id="kpGenLessonBtn" class="bg-teal-600 hover:bg-teal-700 text-white px-2.5 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap" disabled title="按选中的知识点生成教案">教案生成</button>
+ <button id="kpGenPptBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap" disabled title="按选中的知识点生成PPT">PPT生成</button>
+ </div>
+ </div>
+ <div id="kpContainer" class="px-4 py-2 grid grid-cols-1 gap-1.5"></div>
+ </div>
 
-  <!-- 拖动分隔条 2 -->
-  <div id="resizer2" class="resizer"></div>
+ <!-- 对话记录标签（按课程保留） -->
+ <div class="flex-shrink-0 px-4 py-1 bg-teal-50/60 border-b border-rule text-[10px] text-muted text-center">
+ 对话记录（按课程保留）
+ </div>
 
-  <!-- ====== 右栏：教案预览 ====== -->
-  <aside id="previewPanel" class="flex-shrink-0 bg-white/70 backdrop-blur-sm flex flex-col" style="flex: 0 0 420px; min-width: 260px; max-width: 800px;">
-    <div class="flex-shrink-0 px-3 py-2.5 border-b border-rule flex items-center justify-between gap-2">
-      <h2 class="text-xs font-semibold text-muted uppercase tracking-wider whitespace-nowrap">教案预览</h2>
-      <div class="flex items-center gap-1.5 min-w-0">
-        <span id="previewMeta" class="text-[11px] text-muted truncate"></span>
-        <button id="openTemplateLibraryBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="打开教案模板库">📝 模板库</button>
-        <button id="fullscreenPreviewBtn" class="btn-ghost px-2 py-1 text-xs rounded whitespace-nowrap" title="全屏预览/编辑教案">🔍 全屏</button>
-      </div>
-    </div>
-    <div id="previewContent" class="flex-1 overflow-y-auto px-4 py-3 lesson-preview text-sm">
+ <!-- 对话消息流 -->
+ <div id="chatStream" class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+ <!-- 聊天骨架屏 -->
+ <div id="chatSkeleton" class="hidden space-y-3">
+ <div class="flex items-start gap-2"><div class="skeleton skeleton-circle" style="width:28px;height:28px;flex-shrink:0;"></div><div class="flex-1"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width:75%;"></div></div></div>
+ <div class="flex items-start gap-2 flex-row-reverse"><div class="skeleton" style="width:28px;height:28px;border-radius:50%;flex-shrink:0;"></div><div class="flex-1"><div class="skeleton skeleton-line" style="width:65%;"></div><div class="skeleton skeleton-line" style="width:40%;"></div></div></div>
+ <div class="flex items-start gap-2"><div class="skeleton skeleton-circle" style="width:28px;height:28px;flex-shrink:0;"></div><div class="flex-1"><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width:55%;"></div><div class="skeleton skeleton-line" style="width:85%;"></div></div></div>
+ </div>
+ <div id="tutorialGuideCard" class="hidden tutorial-card bg-white/90 rounded-xl border border-gray-200 shadow-soft p-4 fade-in">
+ <div class="font-semibold text-sm text-gray-800 mb-2 flex items-center gap-2">
+ <span> 备课助手 · 快速上手</span>
+ </div>
+ <ol class="space-y-1.5 text-xs text-gray-600 leading-relaxed list-decimal pl-5">
+ <li><b>新建课程和章节</b> — 左栏「+」新建课程，再点课程旁的「+」新建章节，上传教材</li>
+ <li><b>提取知识点 → 生成教案</b> — 点击章节条的"①提取知识点"，再点"②生成教案"</li>
+ <li><b>对话微调</b> — 在底部对话框输入修改意见，AI实时调整教案内容</li>
+ <li><b>生成PPT</b> — 满意后点击"生成PPT"，选择风格导出课件</li>
+ </ol>
+ <div class="flex items-center justify-between mt-3">
+ <button class="text-[10px] text-gray-400 hover:text-gray-600 underline" onclick="openTutorial()">查看详细教程</button>
+ <button id="tutorialGuideCloseBtn" class="btn-ghost px-2.5 py-1 rounded text-xs">知道了</button>
+ </div>
+</div>
+ <div id="chatEmptyState" class="text-center text-xs text-muted py-6">
+ <div class="font-serif text-base text-teal-700 mb-1">备课助手 · 智能备课伴侣</div>
+ <div>遵循"宏观→微观"备课逻辑，按 ① 提取知识点 → ② 生成教案 → ③ 对话微调 顺序操作</div>
+ </div>
+ </div>
+
+ <!-- 输入区 -->
+ <div class="flex-shrink-0 bg-white/80 backdrop-blur-md border-t border-rule p-3">
+ <div class="flex items-end gap-2">
+ <div class="flex-1 relative">
+ <textarea id="chatInput" rows="2" placeholder="对教案提修改意见，如：把导入换成新闻案例 / 增加一个互动环节 / 缩短知识讲解到30分钟..."
+ class="input-ink w-full px-3 py-2 rounded-lg text-sm resize-none"></textarea>
+ </div>
+ <button id="sendBtn" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+ 发送
+ </button>
+ </div>
+ <div class="flex items-center justify-between mt-1.5 px-1">
+<div class="text-[10px] text-muted">提示：⏎ 发送 / Shift+⏎ 换行</div>
+ </div>
+ </div>
+ </div>
+ </main>
+
+ <!-- 拖动分隔条 2 -->
+ <div id="resizer2" class="resizer"></div>
+
+ <!-- ====== 右栏：预览面板 ====== -->
+ <aside id="previewPanel" class="flex-shrink-0 bg-white/70 backdrop-blur-sm flex flex-col" style="flex: 0 0 420px; min-width: 260px; max-width: 800px;">
+ <div class="flex-shrink-0 px-3 py-2.5 border-b border-rule flex items-center justify-between gap-2">
+ <span class="text-xs font-semibold text-ink-2"> 预览</span>
+ <div class="flex items-center gap-1.5 min-w-0">
+ <span id="previewMeta" class="text-[11px] text-muted truncate"></span>
+<button id="previewCloseBtn" class="items-center justify-center w-7 h-7 rounded text-muted hover:bg-gray-100 flex-shrink-0" title="关闭预览">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+ </button>
+ </div>
+ </div>
+ <!-- 标签栏 -->
+ <div class="flex-shrink-0 px-3 py-1.5 border-b border-rule flex items-center gap-2 bg-white/50">
+ <button id="previewTabLesson" class="preview-tab active px-2.5 py-1 text-xs font-semibold rounded">教案预览</button>
+ <button id="previewTabPpt" class="preview-tab px-2.5 py-1 text-xs font-semibold rounded">PPT预览</button>
+ </div>
+ <!-- 教案按钮栏 -->
+ <div id="lessonActionBar" class="flex-shrink-0 px-3 py-1.5 border-b border-rule flex items-center gap-1 bg-white/50">
+ <button id="openTemplateLibraryBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded" title="打开教案模板库">模板库</button>
+ <button id="versionHistoryBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded hidden" title="查看教案版本历史">版本历史</button>
+ <button id="genPptBtn" class="btn-primary px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled title="根据教案设计PPT">生成PPT</button>
+ <div class="relative" id="exportDropdownWrap">
+ <button id="lessonExportBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled>导出</button>
+ <div id="exportMenuItems" class="hidden absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[100px]">
+ <button class="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 whitespace-nowrap" data-export-fmt="markdown">导出 Markdown</button>
+ <button class="block w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 whitespace-nowrap" data-export-fmt="docx">导出 DOCX</button>
+ </div>
+ </div>
+ <button id="evaluateLessonBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed" disabled title="多指标打分 + 双视角评审">评估</button>
+ <button id="fullscreenPreviewBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded" title="全屏预览/编辑教案">全屏</button>
+<button id="uploadLessonBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1" title="上传本地教案文件 (DOCX/MD/TXT)" disabled>
+<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+<span>上传</span></button>
+</div>
+ <!-- PPT按钮栏 -->
+ <div id="pptActionBar" class="flex-shrink-0 px-3 py-1.5 border-b border-rule items-center gap-1 bg-white/50 hidden">
+ <button id="pptOpenTemplateLibraryBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded" title="打开PPT模板库">模板库</button>
+ <button id="pptFullscreenBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded disabled:opacity-40 disabled:cursor-not-allowed" title="全屏播放PPT" disabled>全屏</button>
+ <button id="pptSaveBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded hidden" title="保存PPT编辑">保存</button>
+ <button id="pptExportFileBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded hidden" title="导出PPT文件">导出PPT</button>
+<button id="uploadPptBtn" class="btn-ghost px-1.5 py-0.5 text-[10px] rounded disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1" title="上传本地PPT文件 (PPTX)" disabled>
+<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+<span>上传</span></button>
+</div>
+ <!-- 预览主内容区 -->
+ <div class="flex-1 flex flex-col min-h-0">
+ <input type="file" id="uploadLessonInput" accept=".docx,.md,.txt" class="hidden">
+<input type="file" id="uploadPptInput" accept=".pptx" class="hidden">
+ <!-- 教案记录列表 -->
+ <div id="lessonFileList" class="hidden max-h-36 overflow-y-auto px-4 py-2 text-sm space-y-1 border-b border-rule">
+ <div class="text-center text-xs text-muted py-2">暂无教案</div>
+ </div>
+ <div id="previewSkeleton" class="hidden flex-1 overflow-y-auto space-y-3 p-4">
+ <div class="skeleton skeleton-title"></div>
+ <div class="skeleton skeleton-line"></div>
+ <div class="skeleton skeleton-line" style="width:90%;"></div>
+ <div class="skeleton skeleton-line" style="width:70%;"></div>
+ <div class="skeleton skeleton-line"></div>
+ <div class="skeleton skeleton-line" style="width:80%;"></div>
+ <div class="skeleton skeleton-line" style="width:55%;"></div>
+ </div>
+ <!-- 预览内容叠加容器（教案和PPT重叠，避免同时占据空间） -->
+  <div class="flex-1 relative min-h-0">
+    <div id="previewContent" class="absolute inset-0 overflow-y-auto px-4 py-3 lesson-preview text-sm">
       <div class="text-center text-xs text-muted py-10">
         <div class="font-serif text-base text-teal-700 mb-2">教案预览区</div>
         <div>完成 ① 提取知识点 → ② 生成教案 后<br>这里会显示完整六阶段教案</div>
       </div>
     </div>
-  </aside>
+    <div id="pptPreviewContent" class="absolute inset-0 overflow-y-auto px-4 py-3 text-sm fade-hide">
+      <div class="text-center text-xs text-muted py-10">
+        <div class="font-serif text-base text-teal-700 mb-2">PPT预览区</div>
+        <div>生成PPT后<br>这里会显示可编辑的幻灯片预览</div>
+      </div>
+    </div>
+  </div>
+  <!-- PPT记录列表 -->
+  <div id="pptFileList" class="hidden max-h-36 overflow-y-auto px-4 py-2 text-sm space-y-1 border-t border-rule">
+    <div class="text-center text-xs text-muted py-2">暂无PPT</div>
+  </div>
+ </div>
+ <!-- 版本历史面板 -->
+ <div id="versionHistoryPanel" class="hidden flex-shrink-0 border-t border-rule bg-white/90 max-h-64 overflow-y-auto">
+ <div class="px-3 py-2 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm border-b border-rule">
+ <h3 class="text-xs font-semibold text-teal-700"> 版本历史</h3>
+ <div class="flex items-center gap-2">
+ <button id="createVersionBtn" class="btn-ghost px-2 py-0.5 rounded text-[10px]" title="将当前版本保存为快照">+ 标记版本</button>
+ <button id="closeVersionHistoryBtn" class="text-muted hover:text-ink text-xs"></button>
+ </div>
+ </div>
+ <div id="versionList" class="px-2 py-1 space-y-1">
+ <div class="text-xs text-muted text-center py-4">加载中...</div>
+ </div>
+ <!-- 创建版本输入区 -->
+ <div id="createVersionInputArea" class="hidden px-3 py-2 border-t border-rule bg-teal-50/50 flex items-center gap-2">
+ <input id="versionDescriptionInput" type="text" class="flex-1 text-xs border border-rule rounded px-2 py-1 bg-white focus:outline-none focus:border-teal-400" placeholder="版本描述（如：完成初稿 / 修改导入部分）" maxlength="200">
+ <button id="confirmCreateVersionBtn" class="btn-primary px-2 py-1 rounded text-xs whitespace-nowrap">创建</button>
+ <button id="cancelCreateVersionBtn" class="btn-ghost px-2 py-1 rounded text-xs">取消</button>
+ </div>
+ </div>
+ </aside>
 
 </div>
 
 <!-- ========== 模态框：新建课程 ========== -->
 <div id="courseModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 class="font-serif font-bold text-base mb-3 text-ink">新建课程</h3>
-    <div class="space-y-3">
-      <div>
-        <label class="text-xs text-muted block mb-1">课程名称 *</label>
-        <input id="newCourseName" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机网络">
-      </div>
-      <div>
-        <label class="text-xs text-muted block mb-1">所属专业</label>
-        <input id="newCourseMajor" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机科学与技术">
-      </div>
-      <div>
-        <label class="text-xs text-muted block mb-1">学科领域（用于AI定制生成）</label>
-        <select id="newCourseSubject" class="input-ink w-full px-3 py-2 rounded-md text-sm">
-          <option value="">通用（不指定学科）</option>
-          <optgroup label="━ 中小学 ─">
-            <option value="chinese">语文</option>
-            <option value="math">数学</option>
-            <option value="english">英语</option>
-            <option value="physics">物理</option>
-            <option value="chemistry">化学</option>
-            <option value="biology">生物</option>
-            <option value="history">历史</option>
-            <option value="geography">地理</option>
-            <option value="politics">政治</option>
-            <option value="it">信息技术</option>
-          </optgroup>
-          <optgroup label="━ 理学 ─">
-            <option value="applied_math">应用数学</option>
-            <option value="statistics">统计学</option>
-            <option value="psychology">心理学</option>
-            <option value="ecology">生态学</option>
-          </optgroup>
-          <optgroup label="━ 工学 ─">
-            <option value="cs">计算机科学与技术</option>
-            <option value="software_eng">软件工程</option>
-            <option value="ai">人工智能</option>
-            <option value="data_science">数据科学</option>
-            <option value="electronic_info">电子信息工程</option>
-            <option value="communication">通信工程</option>
-            <option value="automation">自动化</option>
-            <option value="mechanical">机械工程</option>
-            <option value="civil_eng">土木工程</option>
-            <option value="architecture">建筑学</option>
-            <option value="materials_sci">材料科学与工程</option>
-            <option value="electrical_eng">电气工程</option>
-            <option value="environmental_eng">环境工程</option>
-            <option value="biomedical_eng">生物医学工程</option>
-            <option value="cybersecurity">网络安全</option>
-          </optgroup>
-          <optgroup label="━ 医学 ─">
-            <option value="clinical_med">临床医学</option>
-            <option value="basic_med">基础医学</option>
-            <option value="pharmacy">药学</option>
-            <option value="nursing">护理学</option>
-            <option value="stomatology">口腔医学</option>
-            <option value="tcm">中医学</option>
-            <option value="public_health">公共卫生</option>
-          </optgroup>
-          <optgroup label="━ 法学 ─">
-            <option value="law">法学</option>
-            <option value="sociology">社会学</option>
-            <option value="political_sci">政治学与行政学</option>
-          </optgroup>
-          <optgroup label="━ 经济学 ─">
-            <option value="economics">经济学</option>
-            <option value="finance">金融学</option>
-            <option value="fiscal">财政学</option>
-            <option value="intl_trade">国际经济与贸易</option>
-            <option value="insurance">保险学</option>
-          </optgroup>
-          <optgroup label="━ 管理学 ─">
-            <option value="business_admin">工商管理</option>
-            <option value="accounting">会计学</option>
-            <option value="financial_mgmt">财务管理</option>
-            <option value="marketing">市场营销</option>
-            <option value="public_admin">公共管理</option>
-            <option value="info_mgmt">信息管理与信息系统</option>
-            <option value="ecommerce">电子商务</option>
-            <option value="logistics">物流管理</option>
-          </optgroup>
-          <optgroup label="━ 文学 ─">
-            <option value="chinese_lit">中国语言文学</option>
-            <option value="foreign_lit">外国语言文学</option>
-            <option value="journalism">新闻传播学</option>
-            <option value="advertising">广告学</option>
-            <option value="japanese">日语</option>
-          </optgroup>
-          <optgroup label="━ 教育学 ─">
-            <option value="education">教育学</option>
-            <option value="preschool_edu">学前教育</option>
-            <option value="edtech">教育技术学</option>
-            <option value="pe">体育教育</option>
-          </optgroup>
-          <optgroup label="━ 艺术学 ─">
-            <option value="art_design">艺术设计</option>
-            <option value="music">音乐学</option>
-            <option value="fine_arts">美术学</option>
-            <option value="dance">舞蹈学</option>
-            <option value="digital_media">数字媒体艺术</option>
-          </optgroup>
-          <optgroup label="━ 农学 ─">
-            <option value="agriculture">农学</option>
-            <option value="forestry">林学</option>
-            <option value="horticulture">园艺学</option>
-            <option value="animal_sci">动物科学</option>
-          </optgroup>
-          <optgroup label="━ 历史学 ─">
-            <option value="archaeology">考古学</option>
-            <option value="museology">文物与博物馆学</option>
-          </optgroup>
-          <optgroup label="━ 哲学 ─">
-            <option value="philosophy">哲学</option>
-            <option value="logic">逻辑学</option>
-          </optgroup>
-          <option value="other">其他</option>
-        </select>
-        <div class="text-xs text-muted mt-1">提示：选定学科后，AI生成教案/PPT/知识点时会按该学科规范注入提示词</div>
-      </div>
-      <div>
-        <label class="text-xs text-muted block mb-1">课程描述</label>
-        <textarea id="newCourseDesc" rows="2" class="input-ink w-full px-3 py-2 rounded-md text-sm resize-none" placeholder="可选"></textarea>
-      </div>
-    </div>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="cancelCourse" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmCourse" class="btn-primary px-3 py-1.5 rounded-md text-sm">创建</button>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
+ <h3 class="font-serif font-bold text-base mb-3 text-ink">新建课程</h3>
+ <div class="space-y-3">
+ <div>
+ <label class="text-xs text-muted block mb-1">课程名称 *</label>
+ <input id="newCourseName" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机网络">
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">所属专业</label>
+ <input id="newCourseMajor" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="如：计算机科学与技术">
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">学科领域（用于AI定制生成）</label>
+ <select id="newCourseSubject" class="input-ink w-full px-3 py-2 rounded-md text-sm">
+ <option value="">通用（不指定学科）</option>
+ <optgroup label="━ 中小学 ─">
+ <option value="chinese">语文</option>
+ <option value="math">数学</option>
+ <option value="english">英语</option>
+ <option value="physics">物理</option>
+ <option value="chemistry">化学</option>
+ <option value="biology">生物</option>
+ <option value="history">历史</option>
+ <option value="geography">地理</option>
+ <option value="politics">政治</option>
+ <option value="it">信息技术</option>
+ </optgroup>
+ <optgroup label="━ 理学 ─">
+ <option value="applied_math">应用数学</option>
+ <option value="statistics">统计学</option>
+ <option value="psychology">心理学</option>
+ <option value="ecology">生态学</option>
+ </optgroup>
+ <optgroup label="━ 工学 ─">
+ <option value="cs">计算机科学与技术</option>
+ <option value="software_eng">软件工程</option>
+ <option value="ai">人工智能</option>
+ <option value="data_science">数据科学</option>
+ <option value="electronic_info">电子信息工程</option>
+ <option value="communication">通信工程</option>
+ <option value="automation">自动化</option>
+ <option value="mechanical">机械工程</option>
+ <option value="civil_eng">土木工程</option>
+ <option value="architecture">建筑学</option>
+ <option value="materials_sci">材料科学与工程</option>
+ <option value="electrical_eng">电气工程</option>
+ <option value="environmental_eng">环境工程</option>
+ <option value="biomedical_eng">生物医学工程</option>
+ <option value="cybersecurity">网络安全</option>
+ </optgroup>
+ <optgroup label="━ 医学 ─">
+ <option value="clinical_med">临床医学</option>
+ <option value="basic_med">基础医学</option>
+ <option value="pharmacy">药学</option>
+ <option value="nursing">护理学</option>
+ <option value="stomatology">口腔医学</option>
+ <option value="tcm">中医学</option>
+ <option value="public_health">公共卫生</option>
+ </optgroup>
+ <optgroup label="━ 法学 ─">
+ <option value="law">法学</option>
+ <option value="sociology">社会学</option>
+ <option value="political_sci">政治学与行政学</option>
+ </optgroup>
+ <optgroup label="━ 经济学 ─">
+ <option value="economics">经济学</option>
+ <option value="finance">金融学</option>
+ <option value="fiscal">财政学</option>
+ <option value="intl_trade">国际经济与贸易</option>
+ <option value="insurance">保险学</option>
+ </optgroup>
+ <optgroup label="━ 管理学 ─">
+ <option value="business_admin">工商管理</option>
+ <option value="accounting">会计学</option>
+ <option value="financial_mgmt">财务管理</option>
+ <option value="marketing">市场营销</option>
+ <option value="public_admin">公共管理</option>
+ <option value="info_mgmt">信息管理与信息系统</option>
+ <option value="ecommerce">电子商务</option>
+ <option value="logistics">物流管理</option>
+ </optgroup>
+ <optgroup label="━ 文学 ─">
+ <option value="chinese_lit">中国语言文学</option>
+ <option value="foreign_lit">外国语言文学</option>
+ <option value="journalism">新闻传播学</option>
+ <option value="advertising">广告学</option>
+ <option value="japanese">日语</option>
+ </optgroup>
+ <optgroup label="━ 教育学 ─">
+ <option value="education">教育学</option>
+ <option value="preschool_edu">学前教育</option>
+ <option value="edtech">教育技术学</option>
+ <option value="pe">体育教育</option>
+ </optgroup>
+ <optgroup label="━ 艺术学 ─">
+ <option value="art_design">艺术设计</option>
+ <option value="music">音乐学</option>
+ <option value="fine_arts">美术学</option>
+ <option value="dance">舞蹈学</option>
+ <option value="digital_media">数字媒体艺术</option>
+ </optgroup>
+ <optgroup label="━ 农学 ─">
+ <option value="agriculture">农学</option>
+ <option value="forestry">林学</option>
+ <option value="horticulture">园艺学</option>
+ <option value="animal_sci">动物科学</option>
+ </optgroup>
+ <optgroup label="━ 历史学 ─">
+ <option value="archaeology">考古学</option>
+ <option value="museology">文物与博物馆学</option>
+ </optgroup>
+ <optgroup label="━ 哲学 ─">
+ <option value="philosophy">哲学</option>
+ <option value="logic">逻辑学</option>
+ </optgroup>
+ <option value="other">其他</option>
+ </select>
+ <div class="text-xs text-muted mt-1">提示：选定学科后，AI生成教案/PPT/知识点时会按该学科规范注入提示词</div>
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">课程描述</label>
+ <textarea id="newCourseDesc" rows="2" class="input-ink w-full px-3 py-2 rounded-md text-sm resize-none" placeholder="可选"></textarea>
+ </div>
+ </div>
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="cancelCourse" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="confirmCourse" class="btn-primary px-3 py-1.5 rounded-md text-sm">创建</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 模态框：上传教材 ========== -->
 <div id="uploadModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
-    <h3 class="font-serif font-bold text-base mb-3 text-ink">上传教材资源</h3>
-    <div class="mb-3">
-      <div class="text-xs text-muted mb-2">📚 先选择教材类型（便于AI针对性识别）</div>
-      <div id="materialTypeRadioGroup" class="grid grid-cols-3 gap-2">
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="syllabus">
-          <span class="text-purple-700 font-medium">课程标准/大纲</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="textbook">
-          <span class="text-green-700 font-medium">教科书</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="reference">
-          <span class="text-blue-700 font-medium">教参教辅</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="exercise_book">
-          <span class="text-orange-700 font-medium">练习题册</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="paper">
-          <span class="text-pink-700 font-medium">学术论文</span>
-        </label>
-        <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
-          <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="other" checked>
-          <span class="text-gray-700 font-medium">自动识别/其他</span>
-        </label>
-      </div>
-    </div>
-    <div id="dropZone" class="drop-zone border-2 border-dashed border-teal-300 rounded-lg p-6 text-center cursor-pointer hover:border-teal-500">
-      <svg class="w-10 h-10 mx-auto text-teal-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-      <div class="text-sm text-ink mb-1">点击选择文件或拖拽到此处</div>
-      <div class="text-xs text-muted">支持 PDF / Word(.docx) / TXT / Markdown</div>
-      <input id="fileInput" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md">
-    </div>
-    <div id="fileList" class="mt-3 space-y-1 max-h-32 overflow-y-auto"></div>
-    <!-- 多教材版本管理：版本标签 + 主教材勾选（同课程仅一本主教材，AI生成时优先检索） -->
-    <div class="mt-3 grid grid-cols-2 gap-2">
-      <div>
-        <label class="text-xs text-muted block mb-1">教材版本标签</label>
-        <input id="versionLabelInput" type="text" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" placeholder="如 人教版/高教版/清华版" maxlength="100">
-      </div>
-      <div class="flex items-end pb-1">
-        <label class="flex items-center gap-1.5 text-xs text-ink cursor-pointer select-none">
-          <input id="isPrimaryCheckbox" type="checkbox" class="w-3.5 h-3.5 accent-teal-600">
-          <span>设为主教材 <span class="text-muted text-[10px]">(AI优先检索)</span></span>
-        </label>
-      </div>
-    </div>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="cancelUpload" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmUpload" class="btn-primary px-3 py-1.5 rounded-md text-sm" disabled>开始上传</button>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
+ <h3 class="font-serif font-bold text-base mb-3 text-ink">上传教材资源</h3>
+ <div class="mb-3">
+ <div class="text-xs text-muted mb-2"> 先选择教材类型（便于AI针对性识别）</div>
+ <div id="materialTypeRadioGroup" class="grid grid-cols-3 gap-2">
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="syllabus">
+ <span class="text-purple-700 font-medium">课程标准/大纲</span>
+ </label>
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="textbook">
+ <span class="text-green-700 font-medium">教科书</span>
+ </label>
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="reference">
+ <span class="text-blue-700 font-medium">教参教辅</span>
+ </label>
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="exercise_book">
+ <span class="text-orange-700 font-medium">练习题册</span>
+ </label>
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="paper">
+ <span class="text-pink-700 font-medium">学术论文</span>
+ </label>
+ <label class="flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs cursor-pointer hover:bg-teal-50" data-mat-type-wrap>
+ <input type="radio" name="mat_type" class="w-3.5 h-3.5 accent-teal-600" value="other" checked>
+ <span class="text-gray-700 font-medium">自动识别/其他</span>
+ </label>
+ </div>
+ </div>
+ <div id="dropZone" class="drop-zone border-2 border-dashed border-teal-300 rounded-lg p-6 text-center cursor-pointer hover:border-teal-500">
+ <svg class="w-10 h-10 mx-auto text-teal-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+ <div class="text-sm text-ink mb-1">点击选择文件或拖拽到此处</div>
+ <div class="text-xs text-muted">支持 PDF / Word(.docx) / TXT / Markdown</div>
+ <input id="fileInput" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md">
+ </div>
+ <div id="fileList" class="mt-3 space-y-1 max-h-32 overflow-y-auto"></div>
+ <!-- 多教材版本管理：版本标签 + 主教材勾选（同课程仅一本主教材，AI生成时优先检索） -->
+ <div class="mt-3 grid grid-cols-2 gap-2">
+ <div>
+ <label class="text-xs text-muted block mb-1">教材版本标签</label>
+ <input id="versionLabelInput" type="text" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" placeholder="如 人教版/高教版/清华版" maxlength="100">
+ </div>
+ <div class="flex items-end pb-1">
+ <label class="flex items-center gap-1.5 text-xs text-ink cursor-pointer select-none">
+ <input id="isPrimaryCheckbox" type="checkbox" class="w-3.5 h-3.5 accent-teal-600">
+ <span>设为主教材 <span class="text-muted text-[10px]">(AI优先检索)</span></span>
+ </label>
+ </div>
+ </div>
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="cancelUpload" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="confirmUpload" class="btn-primary px-3 py-1.5 rounded-md text-sm" disabled>开始上传</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 模态框：LLM 设置 ========== -->
 <div id="settingsModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[32rem] p-5 fade-in max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-serif font-bold text-base text-ink">LLM 大模型设置</h3>
-      <a id="settingsDocsLink" href="#" target="_blank" class="text-xs text-teal-600 hover:underline hidden">获取 API Key →</a>
-    </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-[32rem] p-5 fade-in max-h-[90vh] overflow-y-auto">
+ <div class="flex items-center justify-between mb-4">
+ <h3 class="font-serif font-bold text-base text-ink">LLM 大模型设置</h3>
+ <a id="settingsDocsLink" href="#" target="_blank" class="text-xs text-teal-600 hover:underline hidden">获取 API Key →</a>
+ </div>
 
-    <!-- 供应商选择 -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">服务供应商</label>
-      <select id="llmProvider" class="input-ink w-full px-3 py-2 rounded-md text-sm">
-        <!-- 动态填充 -->
-      </select>
-    </div>
+ <!-- 供应商选择 -->
+ <div class="mb-3">
+ <label class="text-xs text-muted block mb-1.5">服务供应商</label>
+ <select id="llmProvider" class="input-ink w-full px-3 py-2 rounded-md text-sm">
+ <!-- 动态填充 -->
+ </select>
+ </div>
 
-    <!-- API Key -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">
-        API Key
-        <span id="apiKeyStatus" class="ml-2 text-[10px]"></span>
-      </label>
-      <div class="relative">
-        <input id="llmApiKey" type="password" class="input-ink w-full px-3 py-2 pr-10 rounded-md text-sm" placeholder="sk-..." autocomplete="off">
-        <button id="toggleApiKeyVisibility" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink" title="显示/隐藏">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-        </button>
-      </div>
-      <p id="apiKeyHint" class="text-[10px] text-muted mt-1"></p>
-    </div>
+ <!-- API Key -->
+ <div class="mb-3">
+ <label class="text-xs text-muted block mb-1.5">
+ API Key
+ <span id="apiKeyStatus" class="ml-2 text-[10px]"></span>
+ </label>
+ <div class="relative">
+ <input id="llmApiKey" type="password" class="input-ink w-full px-3 py-2 pr-10 rounded-md text-sm" placeholder="sk-..." autocomplete="off">
+ <button id="toggleApiKeyVisibility" type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink" title="显示/隐藏">
+ <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+ </button>
+ </div>
+ <p id="apiKeyHint" class="text-[10px] text-muted mt-1"></p>
+ </div>
 
-    <!-- Base URL -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">Base URL <span class="text-gray-400">(OpenAI 兼容接口地址)</span></label>
-      <input id="llmBaseUrl" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="https://...">
-    </div>
+ <!-- Base URL -->
+ <div class="mb-3">
+ <label class="text-xs text-muted block mb-1.5">Base URL <span class="text-gray-400">(OpenAI 兼容接口地址)</span></label>
+ <input id="llmBaseUrl" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="https://...">
+ </div>
 
-    <!-- 模型 -->
-    <div class="mb-3">
-      <label class="text-xs text-muted block mb-1.5">模型名称</label>
-      <div class="flex gap-2">
-        <input id="llmModel" type="text" class="input-ink flex-1 px-3 py-2 rounded-md text-sm" placeholder="如 qwen-plus" list="llmModelList">
-        <datalist id="llmModelList"></datalist>
-      </div>
-    </div>
+ <!-- 模型 -->
+ <div class="mb-3">
+ <label class="text-xs text-muted block mb-1.5">模型名称</label>
+ <div class="flex gap-2">
+ <input id="llmModel" type="text" class="input-ink flex-1 px-3 py-2 rounded-md text-sm" placeholder="如 qwen-plus" list="llmModelList">
+ <datalist id="llmModelList"></datalist>
+ </div>
+ </div>
 
-    <!-- 高级参数 -->
-    <details class="mb-3">
-      <summary class="text-xs text-muted cursor-pointer hover:text-ink select-none">高级参数</summary>
-      <div class="mt-2 grid grid-cols-2 gap-2">
-        <div>
-          <label class="text-[10px] text-muted block mb-1">Temperature (0-2)</label>
-          <input id="llmTemperature" type="number" step="0.1" min="0" max="2" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="0.7">
-        </div>
-        <div>
-          <label class="text-[10px] text-muted block mb-1">Max Tokens</label>
-          <input id="llmMaxTokens" type="number" step="256" min="256" max="32768" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="4096">
-        </div>
-      </div>
-    </details>
+ <!-- 高级参数 -->
+ <details class="mb-3">
+ <summary class="text-xs text-muted cursor-pointer hover:text-ink select-none">高级参数</summary>
+ <div class="mt-2 grid grid-cols-2 gap-2">
+ <div>
+ <label class="text-[10px] text-muted block mb-1">Temperature (0-2)</label>
+ <input id="llmTemperature" type="number" step="0.1" min="0" max="2" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="0.7">
+ </div>
+ <div>
+ <label class="text-[10px] text-muted block mb-1">Max Tokens</label>
+ <input id="llmMaxTokens" type="number" step="256" min="256" max="32768" class="input-ink w-full px-2 py-1.5 rounded-md text-xs" value="4096">
+ </div>
+ </div>
+ </details>
 
-    <!-- 操作按钮 -->
-    <div class="flex justify-between gap-2 mt-4">
-      <button id="testLlmBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        测试连接
-      </button>
-      <div class="flex gap-2">
-        <button id="cancelSettings" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-        <button id="saveSettings" class="btn-primary px-3 py-1.5 rounded-md text-sm">保存设置</button>
-      </div>
-    </div>
+ <!-- 操作按钮 -->
+ <div class="flex justify-between gap-2 mt-4">
+ <button id="testLlmBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm flex items-center gap-1.5">
+ <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+ 测试连接
+ </button>
+ <div class="flex gap-2">
+ <button id="cancelSettings" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="saveSettings" class="btn-primary px-3 py-1.5 rounded-md text-sm">保存设置</button>
+ </div>
+ </div>
 
-    <!-- 测试结果显示 -->
-    <div id="testResult" class="hidden mt-3 px-3 py-2 rounded-md text-xs"></div>
+ <!-- 测试结果显示 -->
+ <div id="testResult" class="hidden mt-3 px-3 py-2 rounded-md text-xs"></div>
 
-    <!-- 提示信息 -->
-    <div class="mt-3 pt-3 border-t border-rule text-[10px] text-muted leading-relaxed">
-      <div class="mb-1">📌 提示：</div>
-      <div>· API Key 仅存储在本地服务器，不会上传到任何第三方</div>
-      <div>· 若 API Key 显示为 <code class="bg-paper px-1 rounded">sk-x****xxxx</code> 格式，提交时将保留原值</div>
-      <div>· 切换供应商会自动填充预设的 Base URL 和默认模型</div>
-    </div>
-  </div>
+ <!-- 提示信息 -->
+ <div class="mt-3 pt-3 border-t border-rule text-[10px] text-muted leading-relaxed">
+ <div class="mb-1"> 提示：</div>
+ <div>· API Key 仅存储在本地服务器，不会上传到任何第三方</div>
+ <div>· 若 API Key 显示为 <code class="bg-paper px-1 rounded">sk-x****xxxx</code> 格式，提交时将保留原值</div>
+ <div>· 切换供应商会自动填充预设的 Base URL 和默认模型</div>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 模态框：思维导图 ========== -->
 <div id="mindmapModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[80vw] h-[85vh] p-5 fade-in flex flex-col">
-    <div class="flex items-center justify-between mb-3 flex-shrink-0">
-      <h3 class="font-serif font-bold text-base text-ink">🧠 思维导图</h3>
-      <div class="flex items-center gap-2">
-        <span id="mindmapCount" class="text-xs text-muted"></span>
-        <button id="mindmapRefreshBtn" class="btn-ghost px-2 py-1 rounded text-xs" title="刷新">🔄 刷新</button>
-        <button id="mindmapClose" class="btn-ghost px-2 py-1 rounded text-xs">✕ 关闭</button>
-      </div>
-    </div>
-    <div class="flex-1 min-h-0 rounded-lg border border-rule bg-white relative overflow-hidden">
-      <svg id="mindmapSvg" class="w-full h-full"></svg>
-    </div>
-    <div class="flex-shrink-0 mt-2 text-[10px] text-muted flex items-center gap-4">
-      <span>🖱 滚轮缩放 · 拖拽平移</span>
-      <span>🔄 双击节点展开/折叠</span>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-[80vw] h-[85vh] p-5 fade-in flex flex-col">
+ <div class="flex items-center justify-between mb-3 flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> 思维导图</h3>
+ <div class="flex items-center gap-2">
+ <span id="mindmapCount" class="text-xs text-muted"></span>
+ <button id="mindmapRefreshBtn" class="btn-ghost px-2 py-1 rounded text-xs" title="刷新"> 刷新</button>
+ <button id="mindmapClose" class="btn-ghost px-2 py-1 rounded text-xs"> 关闭</button>
+ </div>
+ </div>
+ <div class="flex-1 min-h-0 rounded-lg border border-rule bg-white relative overflow-hidden">
+ <svg id="mindmapSvg" class="w-full h-full"></svg>
+ </div>
+ <div class="flex-shrink-0 mt-2 text-[10px] text-muted flex items-center gap-4">
+ <span> 滚轮缩放 · 拖拽平移</span>
+ <span> 双击节点展开/折叠</span>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 模态框：PPT导出设置 ========== -->
 <div id="pptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[520px] max-h-[90vh] p-5 fade-in overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="font-serif font-bold text-base text-ink">📊 PPT 生成设置</h3>
-      <button id="pptClose" class="btn-ghost px-2 py-1 rounded text-xs">✕ 关闭</button>
-    </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-[520px] max-h-[90vh] p-5 fade-in overflow-y-auto">
+ <div class="flex items-center justify-between mb-4">
+ <h3 class="font-serif font-bold text-base text-ink"> PPT 生成设置</h3>
+ <button id="pptClose" class="btn-ghost px-2 py-1 rounded text-xs"> 关闭</button>
+ </div>
 
-    <!-- 视觉风格 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">视觉风格</label>
-      <div class="grid grid-cols-5 gap-2" id="pptStyleGroup">
-        <label class="ppt-style-option cursor-pointer text-center" data-value="academic">
-          <input type="radio" name="pptStyle" value="academic" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1A56DB,#D6E4FD)"></div>
-            <span class="text-[10px] text-ink-2">学术简约</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="cyan_ink">
-          <input type="radio" name="pptStyle" value="cyan_ink" class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#2E7D6E,#D9EBE6)"></div>
-            <span class="text-[10px] text-ink-2">青绿水墨</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="cute_cartoon">
-          <input type="radio" name="pptStyle" value="cute_cartoon" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#E86B8A,#FDE0E8)"></div>
-            <span class="text-[10px] text-ink-2">清新卡通</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="formal">
-          <input type="radio" name="pptStyle" value="formal" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1E293B,#D4D8DE)"></div>
-            <span class="text-[10px] text-ink-2">商务正式</span>
-          </div>
-        </label>
-        <label class="ppt-style-option cursor-pointer text-center" data-value="minimal">
-          <input type="radio" name="pptStyle" value="minimal" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#333,#E0E0E0)"></div>
-            <span class="text-[10px] text-ink-2">极简黑白</span>
-          </div>
-        </label>
-      </div>
-    </div>
+ <!-- 视觉风格 -->
+ <div class="mb-4">
+ <label class="text-xs font-medium text-ink-2 block mb-2">视觉风格</label>
+ <div class="grid grid-cols-5 gap-2" id="pptStyleGroup">
+ <label class="ppt-style-option cursor-pointer text-center" data-value="academic">
+ <input type="radio" name="pptStyle" value="academic" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1A56DB,#D6E4FD)"></div>
+ <span class="text-[10px] text-ink-2">学术简约</span>
+ </div>
+ </label>
+ <label class="ppt-style-option cursor-pointer text-center" data-value="cyan_ink">
+ <input type="radio" name="pptStyle" value="cyan_ink" class="hidden">
+ <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#2E7D6E,#D9EBE6)"></div>
+ <span class="text-[10px] text-ink-2">青绿水墨</span>
+ </div>
+ </label>
+ <label class="ppt-style-option cursor-pointer text-center" data-value="cute_cartoon">
+ <input type="radio" name="pptStyle" value="cute_cartoon" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#E86B8A,#FDE0E8)"></div>
+ <span class="text-[10px] text-ink-2">清新卡通</span>
+ </div>
+ </label>
+ <label class="ppt-style-option cursor-pointer text-center" data-value="formal">
+ <input type="radio" name="pptStyle" value="formal" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#1E293B,#D4D8DE)"></div>
+ <span class="text-[10px] text-ink-2">商务正式</span>
+ </div>
+ </label>
+ <label class="ppt-style-option cursor-pointer text-center" data-value="minimal">
+ <input type="radio" name="pptStyle" value="minimal" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <div class="w-full h-6 rounded mb-1" style="background:linear-gradient(135deg,#333,#E0E0E0)"></div>
+ <span class="text-[10px] text-ink-2">极简黑白</span>
+ </div>
+ </label>
+ </div>
+ </div>
 
-    <!-- 内容密度 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">内容密度</label>
-      <div class="flex gap-2" id="pptDensityGroup">
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="detailed">
-          <input type="radio" name="pptDensity" value="detailed" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">详细</span>
-            <span class="text-[10px] text-muted block">每页3-5个要点</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="moderate">
-          <input type="radio" name="pptDensity" value="moderate" checked class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">适中</span>
-            <span class="text-[10px] text-muted block">每页2-3个要点</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center density-option" data-value="concise">
-          <input type="radio" name="pptDensity" value="concise" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs font-medium text-ink">精简</span>
-            <span class="text-[10px] text-muted block">每页1-2个要点</span>
-          </div>
-        </label>
-      </div>
-    </div>
+ <!-- 内容密度 -->
+ <div class="mb-4">
+ <label class="text-xs font-medium text-ink-2 block mb-2">内容密度</label>
+ <div class="flex gap-2" id="pptDensityGroup">
+ <label class="flex-1 cursor-pointer text-center density-option" data-value="detailed">
+ <input type="radio" name="pptDensity" value="detailed" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs font-medium text-ink">详细</span>
+ <span class="text-[10px] text-muted block">每页3-5个要点</span>
+ </div>
+ </label>
+ <label class="flex-1 cursor-pointer text-center density-option" data-value="moderate">
+ <input type="radio" name="pptDensity" value="moderate" checked class="hidden">
+ <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs font-medium text-ink">适中</span>
+ <span class="text-[10px] text-muted block">每页2-3个要点</span>
+ </div>
+ </label>
+ <label class="flex-1 cursor-pointer text-center density-option" data-value="concise">
+ <input type="radio" name="pptDensity" value="concise" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs font-medium text-ink">精简</span>
+ <span class="text-[10px] text-muted block">每页1-2个要点</span>
+ </div>
+ </label>
+ </div>
+ </div>
 
-    <!-- 视觉元素 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">视觉元素</label>
-      <div class="flex gap-2" id="pptImageGroup">
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="none">
-          <input type="radio" name="pptImage" value="none" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">纯文字</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="icons">
-          <input type="radio" name="pptImage" value="icons" checked class="hidden">
-          <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">图标装饰</span>
-          </div>
-        </label>
-        <label class="flex-1 cursor-pointer text-center image-option" data-value="rich">
-          <input type="radio" name="pptImage" value="rich" class="hidden">
-          <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
-            <span class="text-xs">丰富布局</span>
-          </div>
-        </label>
-      </div>
-    </div>
+ <!-- 视觉元素 -->
+ <div class="mb-4">
+ <label class="text-xs font-medium text-ink-2 block mb-2">视觉元素</label>
+ <div class="flex gap-2" id="pptImageGroup">
+ <label class="flex-1 cursor-pointer text-center image-option" data-value="none">
+ <input type="radio" name="pptImage" value="none" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs">纯文字</span>
+ </div>
+ </label>
+ <label class="flex-1 cursor-pointer text-center image-option" data-value="icons">
+ <input type="radio" name="pptImage" value="icons" checked class="hidden">
+ <div class="border-2 border-teal-500 rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs">图标装饰</span>
+ </div>
+ </label>
+ <label class="flex-1 cursor-pointer text-center image-option" data-value="rich">
+ <input type="radio" name="pptImage" value="rich" class="hidden">
+ <div class="border-2 border-rule rounded-lg p-2 hover:border-teal-400 transition-colors selected:border-teal-600">
+ <span class="text-xs">丰富布局</span>
+ </div>
+ </label>
+ </div>
+ </div>
 
-    <!-- 自定义风格描述 -->
-    <div class="mb-4">
-      <label class="text-xs font-medium text-ink-2 block mb-2">自定义风格描述（可选）</label>
-      <textarea id="pptStyleCustom" class="input-ink w-full px-3 py-2 rounded-md text-xs" rows="2" placeholder="例如：使用暖色调，多放图片，字体大一些..."></textarea>
-    </div>
+ <!-- 自定义风格描述 -->
+ <div class="mb-4">
+ <label class="text-xs font-medium text-ink-2 block mb-2">自定义风格描述（可选）</label>
+ <textarea id="pptStyleCustom" class="input-ink w-full px-3 py-2 rounded-md text-xs" rows="2" placeholder="例如：使用暖色调，多放图片，字体大一些..."></textarea>
+ </div>
 
-    <div class="flex justify-end gap-2 pt-2 border-t border-rule">
-      <span id="pptStatus" class="text-xs text-muted self-center hidden">生成中，请稍候...</span>
-      <button id="pptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="pptGenerateBtn" class="btn-primary px-4 py-1.5 rounded-md text-sm">生成并导出</button>
-    </div>
-  </div>
+ <!-- 模板管理 -->
+ <div class="mb-4">
+ <div class="flex items-center justify-between mb-2">
+ <label class="text-xs font-medium text-ink-2">风格模板</label>
+ <div class="flex items-center gap-2">
+ <button id="uploadPptTemplateBtn" class="btn-ghost px-2 py-0.5 rounded text-[10px]"> 上传模板</button>
+ <button id="savePptTemplateBtn" class="btn-ghost px-2 py-0.5 rounded text-[10px]"> 保存当前为模板</button>
+ </div>
+ </div>
+ <div class="flex flex-wrap gap-1.5" id="pptTemplateGroup">
+ <!-- 由JS动态渲染 -->
+ </div>
+ </div>
+ <input type="file" id="uploadPptTemplateInput" accept=".pptx" class="hidden">
+
+ <div class="flex justify-end gap-2 pt-2 border-t border-rule">
+ <span id="pptStatus" class="text-xs text-muted self-center hidden">生成中，请稍候...</span>
+ <button id="pptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="pptGenerateBtn" class="btn-primary px-4 py-1.5 rounded-md text-sm">生成并导出</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 模态框：PPT预览 ========== -->
+<div id="pptPreviewModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
+ <div class="bg-white rounded-xl shadow-md-soft w-[90vw] max-w-[1100px] h-[90vh] p-5 fade-in flex flex-col">
+ <div class="flex items-center justify-between mb-3 flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> PPT 预览</h3>
+ <div class="flex items-center gap-2">
+ <button id="pptPreviewRegenerate" class="btn-ghost px-2 py-1 rounded text-xs"> 重新生成</button>
+ <button id="pptPreviewDownload" class="btn-primary px-3 py-1 rounded text-xs">⬇ 下载PPT</button>
+ <button id="pptPreviewClose" class="btn-ghost px-2 py-1 rounded text-xs"> 关闭</button>
+ </div>
+ </div>
+ <div class="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-4" id="pptPreviewBody">
+ <div class="text-center text-muted text-sm py-20">加载中...</div>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 模态框：批量生成PPT ========== -->
+<div id="batchPptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-50 hidden items-center justify-center">
+ <div class="bg-white rounded-xl shadow-md-soft w-[600px] max-h-[90vh] p-5 fade-in flex flex-col">
+ <div class="flex items-center justify-between mb-4 flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> 批量生成PPT</h3>
+ <button id="batchPptClose" class="btn-ghost px-2 py-1 rounded text-xs"> 关闭</button>
+ </div>
+ <div class="flex-1 overflow-y-auto mb-4" id="batchPptLessonList">
+ <!-- 由JS动态加载教案列表 -->
+ <div class="text-center text-muted text-sm py-10">加载教案列表...</div>
+ </div>
+ <div class="flex justify-end gap-2 pt-2 border-t border-rule flex-shrink-0">
+ <span id="batchPptStatus" class="text-xs text-muted self-center hidden"></span>
+ <button id="batchPptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="batchPptGenerateBtn" class="btn-primary px-4 py-1.5 rounded-md text-sm">生成选中项的PPT</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 通用模态框：输入(prompt 替代) ========== -->
 <div id="promptModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 id="promptTitle" class="font-serif font-bold text-base mb-3 text-ink">请输入</h3>
-    <input id="promptInput" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="">
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="promptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="promptOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
+ <h3 id="promptTitle" class="font-serif font-bold text-base mb-3 text-ink">请输入</h3>
+ <input id="promptInput" type="text" class="input-ink w-full px-3 py-2 rounded-md text-sm" placeholder="">
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="promptCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="promptOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 通用模态框：确认(confirm 替代) ========== -->
 <div id="confirmModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
-    <h3 id="confirmTitle" class="font-serif font-bold text-base mb-3 text-ink">确认操作</h3>
-    <p id="confirmMessage" class="text-sm text-ink-2 whitespace-pre-line leading-relaxed mb-1"></p>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="confirmCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="confirmOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确认</button>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-96 p-5 fade-in">
+ <h3 id="confirmTitle" class="font-serif font-bold text-base mb-3 text-ink">确认操作</h3>
+ <p id="confirmMessage" class="text-sm text-ink-2 whitespace-pre-line leading-relaxed mb-1"></p>
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="confirmCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="confirmOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确认</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 新增知识点单弹窗（名称/定义/页数/层级/属性 一次填完）========== -->
+<div id="kpAddModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
+ <div class="bg-white rounded-xl shadow-md-soft w-[460px] max-w-[92vw] p-5 fade-in max-h-[90vh] overflow-y-auto">
+ <h3 class="font-serif font-bold text-base mb-3 text-ink text-teal-700">手动新增知识点</h3>
+ <div class="space-y-3 text-sm">
+ <div>
+ <label class="block text-xs text-muted mb-1">知识点名称 <span class="text-red-500">*</span></label>
+ <input id="kpAddName" type="text" class="input-ink w-full px-3 py-2 rounded-md" placeholder="如：函数的单调性、CSMA/CD 协议">
+ </div>
+ <div>
+ <label class="block text-xs text-muted mb-1">知识点定义 / 简述</label>
+ <textarea id="kpAddDefinition" rows="3" class="input-ink w-full px-3 py-2 rounded-md resize-none" placeholder="可直接填写定义、定理、公式等内容"></textarea>
+ </div>
+ <div>
+ <label class="block text-xs text-muted mb-1">知识层级</label>
+ <select id="kpAddLayer" class="input-ink w-full px-3 py-2 rounded-md">
+ <option value="basic">基础</option>
+ <option value="core">核心</option>
+ <option value="advanced">拓展</option>
+ </select>
+ </div>
+ </div>
+ <div>
+ <label class="block text-xs text-muted mb-1.5">属性标签</label>
+ <div class="flex flex-wrap gap-2">
+ <label class="kp-attr-tag"><input id="kpAddIsKey" type="checkbox" class="accent-amber-500 w-3.5 h-3.5"><span>重点</span></label>
+ <label class="kp-attr-tag"><input id="kpAddIsDifficult" type="checkbox" class="accent-purple-500 w-3.5 h-3.5"><span>难点</span></label>
+ <label class="kp-attr-tag"><input id="kpAddIsExam" type="checkbox" class="accent-indigo-500 w-3.5 h-3.5"><span>考点</span></label>
+ </div>
+ </div>
+ <div class="text-[10px] text-muted bg-teal-50/60 rounded-md px-2.5 py-1.5 border border-teal-100">
+ <div>归属章节：<span id="kpAddCurrentChapter" class="text-teal-700 font-medium">未选择</span></div>
+ </div>
+ </div>
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="kpAddCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="kpAddOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确认新增</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 学科选择模态框 ========== -->
 <div id="subjectPickerModal" class="fixed inset-0 bg-ink/30 backdrop-blur-sm z-[100] hidden items-center justify-center">
-  <div class="bg-white rounded-xl shadow-md-soft w-[480px] p-5 fade-in">
-    <h3 id="subjectPickerTitle" class="font-serif font-bold text-base mb-3 text-ink">选择学科领域</h3>
-    <p class="text-xs text-muted mb-3">选定后将影响 AI 生成教案、PPT、知识点时的学科规范注入</p>
-    <select id="subjectPickerSelect" class="input-ink w-full px-3 py-2 rounded-md text-sm" size="12">
-    </select>
-    <div class="flex justify-end gap-2 mt-4">
-      <button id="subjectPickerCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-      <button id="subjectPickerOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
-    </div>
-  </div>
+ <div class="bg-white rounded-xl shadow-md-soft w-[480px] p-5 fade-in">
+ <h3 id="subjectPickerTitle" class="font-serif font-bold text-base mb-3 text-ink">选择学科领域</h3>
+ <p class="text-xs text-muted mb-3">选定后将影响 AI 生成教案、PPT、知识点时的学科规范注入</p>
+ <select id="subjectPickerSelect" class="input-ink w-full px-3 py-2 rounded-md text-sm" size="12">
+ </select>
+ <div class="flex justify-end gap-2 mt-4">
+ <button id="subjectPickerCancel" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="subjectPickerOk" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== F1: 教案全屏编辑/预览模态框 ========== -->
 <div id="fullscreenLessonModal" class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-[90] hidden items-center justify-center">
-  <div class="bg-paper rounded-xl shadow-md-soft w-[95vw] max-w-[1200px] h-[90vh] flex flex-col fade-in overflow-hidden">
-    <!-- Header -->
-    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
-      <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
-        📄 教案全屏编辑
-        <span id="fullscreenLessonSubtitle" class="text-xs text-muted font-normal ml-2"></span>
-      </h3>
-      <div class="flex items-center gap-1.5">
-        <button id="toggleEditBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="切换编辑/预览模式">
-          <span class="edit-icon">✏️</span>
-          <span class="edit-label">编辑</span>
-        </button>
-        <button id="saveLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm" title="保存修改">💾 保存</button>
-        <button id="closeFullscreenBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭">✕ 关闭</button>
-      </div>
-    </div>
-    <!-- Dirty 提示条 -->
-    <div id="fullscreenDirtyBar" class="hidden flex-shrink-0 px-4 py-1 bg-amber-100 text-amber-700 text-[11px] text-center border-b border-amber-300">
-      ⚠ 有未保存的修改，请点击"保存"以保留
-    </div>
-    <!-- Body -->
-    <div id="fullscreenLessonBody" class="flex-1 overflow-y-auto px-6 py-4 lesson-preview text-sm bg-white">
-      <!-- 由 openFullscreenLesson() 动态渲染 -->
-    </div>
-  </div>
+ <div class="bg-paper rounded-xl shadow-md-soft w-[95vw] max-w-[1200px] h-[90vh] flex flex-col fade-in overflow-hidden">
+ <!-- Header -->
+ <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
+ <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
+ 教案全屏编辑
+ <span id="fullscreenLessonSubtitle" class="text-xs text-muted font-normal ml-2"></span>
+ </h3>
+ <div class="flex items-center gap-1.5">
+ <button id="toggleEditBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="切换编辑/预览模式">
+ <span class="edit-icon"></span>
+ <span class="edit-label">编辑</span>
+ </button>
+ <button id="saveLessonBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm" title="保存修改"> 保存</button>
+ <button id="closeFullscreenBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭"> 关闭</button>
+ </div>
+ </div>
+ <!-- Dirty 提示条 -->
+ <div id="fullscreenDirtyBar" class="hidden flex-shrink-0 px-4 py-1 bg-amber-100 text-amber-700 text-[11px] text-center border-b border-amber-300">
+ 有未保存的修改，请点击"保存"以保留
+ </div>
+ <!-- Body -->
+ <div id="fullscreenLessonBody" class="flex-1 overflow-y-auto px-6 py-4 lesson-preview text-sm bg-white">
+ <!-- 由 openFullscreenLesson() 动态渲染 -->
+ </div>
+ </div>
 </div>
 
 <!-- ========== 教案评估结果模态框（借鉴 instructional_agents：多指标打分 + 双视角评审） ========== -->
 <div id="lessonEvalModal" class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-[95] hidden items-center justify-center">
-  <div class="bg-paper rounded-xl shadow-md-soft w-[92vw] max-w-[1000px] h-[88vh] flex flex-col fade-in overflow-hidden">
-    <!-- Header -->
-    <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
-      <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
-        🔍 教案质量评估报告
-        <span id="evalModalSubtitle" class="text-xs text-muted font-normal ml-2"></span>
-      </h3>
-      <div class="flex items-center gap-1.5">
-        <button id="evalCopyBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="复制评估报告为 Markdown">📋 复制报告</button>
-        <button id="closeEvalModalBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭">✕ 关闭</button>
-      </div>
-    </div>
-    <!-- Body -->
-    <div id="evalModalBody" class="flex-1 overflow-y-auto px-6 py-4 text-sm bg-white space-y-4">
-      <!-- 由 renderLessonEvaluation() 动态渲染 -->
-      <div class="text-center text-xs text-muted py-10">点击"评估教案"按钮开始评估</div>
-    </div>
-  </div>
+ <div class="bg-paper rounded-xl shadow-md-soft w-[92vw] max-w-[1000px] h-[88vh] flex flex-col fade-in overflow-hidden">
+ <!-- Header -->
+ <div class="flex-shrink-0 px-4 py-2.5 border-b border-rule flex items-center justify-between gap-2 bg-teal-50/80">
+ <h3 class="font-serif font-bold text-base text-teal-700 whitespace-nowrap">
+ 教案质量评估报告
+ <span id="evalModalSubtitle" class="text-xs text-muted font-normal ml-2"></span>
+ </h3>
+ <div class="flex items-center gap-1.5">
+ <button id="evalCopyBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="复制评估报告为 Markdown"> 复制报告</button>
+ <button id="closeEvalModalBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm" title="关闭"> 关闭</button>
+ </div>
+ </div>
+ <!-- Body -->
+ <div id="evalModalBody" class="flex-1 overflow-y-auto px-6 py-4 text-sm bg-white space-y-4">
+ <!-- 由 renderLessonEvaluation() 动态渲染 -->
+ <div class="text-center text-xs text-muted py-10">点击"评估教案"按钮开始评估</div>
+ </div>
+ </div>
 </div>
 
-<!-- ========== Toast 提示 ========== -->
-<div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-[100] hidden">
-  <div id="toastBody" class="bg-ink/90 text-white text-sm px-4 py-2 rounded-lg shadow-md-soft"></div>
-</div>
+<!-- ========== Toast 通知容器 ========== -->
+<div id="toastContainer"></div>
+
+<!-- ========== 功能提示容器 ========== -->
+<div id="tipContainer" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-[60] flex flex-col gap-2 items-center pointer-events-none"></div>
 
 <!-- ========== G1: 新手教程模态框 ========== -->
 <div id="tutorialModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[42rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3">
-      <h3 class="font-serif font-bold text-base text-ink">📖 备课助手 · 详细使用教程</h3>
-      <button class="tutorial-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="modal-body space-y-4 text-xs text-ink-2 leading-relaxed">
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">1. 新建课程空间</h4>
-        <p><b class="text-ink">前置条件：</b>打开应用首页。</p>
-        <p><b class="text-ink">操作：</b>在左栏「课程空间」标题右侧点击 + 按钮，输入课程名、专业、描述，点击"创建"。</p>
-        <p><b class="text-ink">预期：</b>列表中出现新课程并自动高亮，下方章节树、教材区激活。</p>
-        <p><b class="text-ink">常见错误：</b>课程名为空 → 无法创建；点击列表不生效 → 先关闭上下文菜单。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">2. +新建章，搭建章节结构</h4>
-        <p><b class="text-ink">前置条件：</b>已有当前课程被选中。</p>
-        <p><b class="text-ink">操作：</b>当前课程标题栏右侧点击「+」按钮，或在章节树节点菜单里选择"新增子节/重命名/删除"。</p>
-        <p><b class="text-ink">预期：</b>章节树出现新建章/节，支持多层级折叠展开。</p>
-        <p><b class="text-ink">常见错误：</b>选中某章后点击+仍建在根 → 注意按钮上下文是课程级"新建章"。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">3. 上传教材并预选类型</h4>
-        <p><b class="text-ink">前置条件：</b>当前课程已激活。</p>
-        <p><b class="text-ink">操作：</b>左下"教材资源"区点击↑按钮 → 先选择教材类型（6 类 + 自动识别）→ 拖放或点选文件 → 开始上传。</p>
-        <p><b class="text-ink">预期：</b>教材列表中出现对应文件，并显示彩色类型 badge / 大小 / 字数。</p>
-        <p><b class="text-ink">常见错误：</b>文件过大或扫描版PDF导致解析失败 → 转 DOCX / OCR 后重传。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">4. 一键提取知识点 & 联网校验准确性</h4>
-        <p><b class="text-ink">前置条件：</b>课程下已上传教材。</p>
-        <p><b class="text-ink">操作：</b>当前课程标题栏点击「📖提知」→ 勾选要提取的教材（可多选）→ 确定 → 等待进度完成。</p>
-        <p><b class="text-ink">预期：</b>toast 提示新增知识点数，可在弹窗选择"立即导出XLSX"。</p>
-        <p><b class="text-ink">常见错误：</b>返回空 → 请检查教材为文字版且不要一次性选择过多。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">5. 章节条①：章节级提取知识点</h4>
-        <p><b class="text-ink">前置条件：</b>已新建章节或填入章节名。</p>
-        <p><b class="text-ink">操作：</b>在中间章节输入条填写章节 → 点击"① 提取知识点"。</p>
-        <p><b class="text-ink">预期：</b>知识点面板展开，可手动改层级/重点/难点/考点。</p>
-        <p><b class="text-ink">常见错误：</b>章节名为空 → 提示先填写章节。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">6. 章节条②：选择模板并生成教案</h4>
-        <p><b class="text-ink">前置条件：</b>知识点面板至少有 1 个知识点。</p>
-        <p><b class="text-ink">操作：</b>点击"⚙ 参数"配置课时/风格/作业分层等 → 点击"② 生成教案"。（可在模板库中维护默认模板 JSON）</p>
-        <p><b class="text-ink">预期：</b>右侧预览区出现全表格化六阶段教案，教案记录列表同步增加。</p>
-        <p><b class="text-ink">常见错误：</b>结构不完整 → 使用失败对话框的"模板填充"或"降参重试"补救。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">7. 中间对话框③：对话微调教案细节</h4>
-        <p><b class="text-ink">前置条件：</b>已生成一份教案。</p>
-        <p><b class="text-ink">操作：</b>在底部对话框输入修改意见，如"导入换案例、缩短讲解到30分钟、增加互动"，回车发送。</p>
-        <p><b class="text-ink">预期：</b>AI 回显调整并刷新右栏教案预览；可导出 MD/DOCX。</p>
-        <p><b class="text-ink">常见错误：</b>发送按钮禁用 → 必须先有 currentLessonId（成功生成过教案）。</p>
-      </section>
-      <section class="bg-teal-50/50 rounded-lg p-3 border border-teal-100">
-        <h4 class="font-semibold text-teal-700 mb-1">8. 生成PPT并导出</h4>
-        <p><b class="text-ink">前置条件：</b>当前存在已生成教案。</p>
-        <p><b class="text-ink">操作：</b>点击"③ 生成PPT" → 选择风格/密度/配图方式 → 生成并导出。</p>
-        <p><b class="text-ink">预期：</b>浏览器自动下载 .pptx，左下 PPT 记录列表新增一项。</p>
-        <p><b class="text-ink">常见错误：</b>打开显示空白 → 升级 PowerPoint/WPS 或降低密度重生成。</p>
-      </section>
-
-      <div class="bg-ochre/5 border border-ochre/20 rounded-lg p-3">
-        <h4 class="font-semibold text-ochre mb-2">❓ Q&A 常见问题</h4>
-        <div class="space-y-2">
-          <div><b class="text-ink">Q1: LLM未配置或报错怎么办？</b><br>A. 点右上角「设置」→ 填入 APIKey + BaseURL + Model → 点"测试连接"确认通过后再操作。</div>
-          <div><b class="text-ink">Q2: 教材解析失败（空/乱码）怎么办？</b><br>A. 先转 PDF 或另存为 DOCX；扫描件需先 OCR；若仍失败请联系管理员并带上文件名。</div>
-          <div><b class="text-ink">Q3: 一键提取知识点返回空？</b><br>A. 检查教材是否为文字版（非扫描图片）；或减少一次性勾选的教材数量后重跑。</div>
-          <div><b class="text-ink">Q4: 教案生成失败或结构不完整？</b><br>A. 在失败对话框选择"重试"或"降参重试"；或点"用模板快速填充"兜底。</div>
-          <div><b class="text-ink">Q5: PPT文件打开显示空白或加载失败？</b><br>A. 安装高版本 PowerPoint 或 WPS；或在 PPT 导出设置中切换到 Less 密度导出。</div>
-          <div><b class="text-ink">Q6: 上传PPT显示加载失败？</b><br>A. 检查扩展名为 .pptx 且文件 < 50MB；或选择"重新生成"下载新的副本。</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
-      <button class="tutorial-close btn-primary px-3 py-1.5 rounded-md text-sm">关闭</button>
-    </div>
-  </div>
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[42rem] max-h-[90vh] overflow-y-auto p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-4">
+ <h3 class="font-serif font-bold text-base text-ink"> 备课助手 · 新手教程</h3>
+ <button class="tutorial-close text-muted hover:text-gray-600 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <div class="modal-body space-y-3 text-xs text-ink-2 leading-relaxed">
+ <div class="bg-gray-50 rounded-lg p-3 border border-gray-200">
+ <h4 class="font-semibold text-gray-800 mb-2"> 备课全流程概览</h4>
+ <div class="flex items-center gap-1 text-[11px] text-gray-600 flex-wrap">
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">① 新建课程</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">新建章节</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">上传教材</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">提取知识点</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">生成教案</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">对话微调</span>
+ <span class="text-gray-300">→</span>
+ <span class="bg-white px-2 py-1 rounded border border-gray-200">生成PPT</span>
+ </div>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块一：课程与章节管理</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 左栏顶部点「+」新建课程，输入课程名称、专业、学科等信息</li>
+ <li>• 点击课程旁的「+」新建章节，章节名称建议与教材目录一致</li>
+ <li>• 点击课程旁的「+」可上传教材文件（支持 PDF、DOCX、TXT）</li>
+ <li>• 左侧课程列表点击可切换课程，所有数据按课程隔离</li>
+ </ul>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块二：知识点提取</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 选中章节后，点击章节条上的「①提取知识点」按钮</li>
+ <li>• 系统会自动分析教材内容，提取关键知识点并展示</li>
+ <li>• 点击课程旁的「提知」可一键提取全部章节的知识点</li>
+ <li>• 提取结果会显示在右侧知识点面板，支持勾选和导出</li>
+ </ul>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块三：教案生成与编辑</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 提取知识点后，点击「②生成教案」进入教案参数配置</li>
+ <li>• 可设置教案语言风格、详细程度、教学目标等参数</li>
+ <li>• 生成后可在底部对话框输入修改意见，AI会实时调整</li>
+ <li>• 支持多版本历史，可随时回退到任意版本</li>
+ <li>• 预览区"教案预览"标签下可查看所有历史教案文件</li>
+ </ul>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块四：PPT生成与导出</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 教案满意后，点击「③生成PPT」选择风格和密度</li>
+ <li>• 支持多种风格：学术简约、青绿水墨、清新卡通、商务正式、极简黑白</li>
+ <li>• 生成后可在预览区"PPT预览"标签下查看所有PPT文件</li>
+ <li>• 支持下载 PPTX 文件，可在 PowerPoint/WPS 中编辑</li>
+ <li>• 教案支持导出为 Markdown 或 DOCX 格式</li>
+ </ul>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块五：模板库使用</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 点击右上角「模板库」管理教案模板和PPT模板</li>
+ <li>• 教案模板：下载Word模板后编辑内容，再上传回系统</li>
+ <li>• PPT模板：上传 .pptx 文件，AI自动分析排版特征</li>
+ <li>• 模板可随时切换，系统会自动适配模板样式</li>
+ </ul>
+ </div>
+ <div class="border border-gray-200 rounded-lg p-3">
+ <h4 class="font-semibold text-gray-800 mb-1.5"> 模块六：设置与常见问题</h4>
+ <ul class="space-y-1 pl-4">
+ <li>• 点右上角「设置」填入 LLM API 信息后测试连接</li>
+ <li>• 素材解析：文字版 PDF/DOCX 效果最佳，扫描件需先 OCR</li>
+ <li>• 教案生成不完整：点击失败对话框的"重试"或"降参重试"</li>
+ <li>• 支持切换主题：默认墨绿、暖阳橘棕、护眼米黄、静湖蓝调、墨韵黑白</li>
+ </ul>
+ </div>
+ </div>
+ <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+ <button class="tutorial-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
+ </div>
+ </div>
 </div>
 
 <!-- ========== G2: 选择教材资源模态框 ========== -->
 <div id="extractMaterialsModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[30rem] max-h-[82vh] overflow-hidden flex flex-col p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3 flex-shrink-0">
-      <h3 class="font-serif font-bold text-base text-ink">选择教材资源（可多选）用于一键提取知识点</h3>
-      <button class="modal-em-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="modal-body flex-1 overflow-y-auto border border-rule rounded-md p-2">
-      <div id="materialsCheckList" class="space-y-1 text-xs">
-        <div class="text-center text-muted py-4">当前课程暂无教材，请先上传</div>
-      </div>
-      <div id="extractProgress" class="hidden mt-3">
-        <div class="flex items-center gap-2 text-teal-700 text-xs mb-1">
-          <span class="inline-block w-3 h-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></span>
-          <span id="extractProgressText">正在提取知识点 ...</span>
-          <span id="extractProgressCount" class="text-teal-500 font-medium ml-1"></span>
-        </div>
-        <div class="w-full h-1.5 bg-teal-100 rounded-full overflow-hidden">
-          <div id="extractProgressBar" class="h-full bg-teal-500 transition-all" style="width: 0%"></div>
-        </div>
-        <div id="extractProgressPoints" class="mt-2 max-h-28 overflow-y-auto text-[10px] text-muted space-y-0.5 hidden">
-          <div class="font-medium text-teal-600 mb-0.5">已提取的知识点：</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-between gap-2 mt-4 flex-shrink-0">
-      <div class="flex gap-2">
-        <button id="selAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">全选</button>
-        <button id="unselAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">取消全选</button>
-      </div>
-      <div class="flex gap-2">
-        <button id="closeExtractMatBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
-        <button id="confirmExtractMatBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
-      </div>
-    </div>
-  </div>
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[30rem] max-h-[82vh] overflow-hidden flex flex-col p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-3 flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink">选择教材资源（可多选）用于一键提取知识点</h3>
+ <button class="modal-em-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <div class="modal-body flex-1 overflow-y-auto border border-rule rounded-md p-2">
+ <div id="materialsCheckList" class="space-y-1 text-xs">
+ <div class="text-center text-muted py-4">当前课程暂无教材，请先上传</div>
+ </div>
+ <!-- 章节框架预设 -->
+ <div id="chapterFrameworkSection" class="mt-3 border border-rule rounded-md p-2 text-xs">
+ <div class="flex items-center justify-between">
+ <span class="text-muted font-medium"> 预设章节框架</span>
+ <button id="toggleFrameworkBtn" class="text-teal-600 hover:text-teal-800 text-[11px]">展开设置</button>
+ </div>
+ <div id="frameworkConfigBody" class="hidden mt-2 space-y-2">
+ <div class="flex items-center gap-2">
+ <label class="text-muted whitespace-nowrap">章节数量：</label>
+ <input id="chapterCountInput" type="number" min="1" max="30" value="0"
+ class="w-16 border border-rule rounded px-1.5 py-0.5 text-xs text-center">
+ <span class="text-muted text-[10px]">（设为0表示不使用预设框架）</span>
+ </div>
+ <div id="chapterNamesContainer" class="space-y-1 max-h-40 overflow-y-auto">
+ <div class="text-muted text-[10px] italic">请先设置章节数量</div>
+ </div>
+ <div class="text-[10px] text-muted leading-relaxed bg-teal-50 border border-teal-200 rounded p-1.5">
+ 预设章节框架可以帮助AI更准确地识别和组织知识点归类
+ </div>
+ </div>
+ </div>
+ <div id="extractProgress" class="hidden mt-3">
+ <div class="flex items-center gap-2 text-teal-700 text-xs mb-1">
+ <span class="inline-block w-3 h-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></span>
+ <span id="extractProgressText">正在提取知识点...</span>
+ <span id="extractProgressCount" class="text-teal-500 font-medium ml-1"></span>
+ </div>
+ <div class="w-full h-1.5 bg-teal-100 rounded-full overflow-hidden">
+ <div id="extractProgressBar" class="h-full bg-teal-500 transition-all" style="width: 0%"></div>
+ </div>
+ <div id="extractProgressPoints" class="mt-2 max-h-28 overflow-y-auto text-[10px] text-muted space-y-0.5 hidden">
+ <div class="font-medium text-teal-600 mb-0.5">已提取的知识点：</div>
+ </div>
+ </div>
+ </div>
+ <div class="modal-footer flex justify-between gap-2 mt-4 flex-shrink-0">
+ <div class="flex gap-2">
+ <button id="selAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">全选</button>
+ <button id="unselAllMatBtn" class="btn-ghost px-2 py-1 rounded text-xs">取消全选</button>
+ </div>
+ <div class="flex gap-2">
+ <button id="closeExtractMatBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="confirmExtractMatBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">确定</button>
+ </div>
+ </div>
+ </div>
 </div>
 
-<!-- ========== G3: 教案模板库管理模态框 ========== -->
+<!-- ========== G3: 模板库管理模态框 ========== -->
 <div id="templateLibraryModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[50rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3">
-      <h3 class="font-serif font-bold text-base text-ink">📑 教案模板库</h3>
-      <button class="tpl-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="text-[10px] text-muted mb-3 bg-teal-50 border border-teal-200 rounded-lg p-2 leading-relaxed flex items-start justify-between gap-2">
-      <div class="flex-1">
-        💡 模板是教案的"骨架"——它定义了教案包含哪些内容（如教学目标、教学过程等）。
-        您可以直接 <strong>下载任意模板为 Word 文档</strong>，在 Word 中编辑后 <strong>上传</strong> 回来，系统会自动识别您的内容结构。
-      </div>
-      <a href="/api/lesson-templates/default/download" target="_blank" class="flex-shrink-0 btn-primary px-2 py-1 rounded text-[11px] whitespace-nowrap">⬇ 下载默认Word模板</a>
-    </div>
-    <div class="modal-body grid grid-cols-2 gap-3 text-xs">
-      <!-- 左栏：模板列表 -->
-      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
-        <div class="flex gap-2 flex-wrap">
-          <button id="newTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">+ 新建模板</button>
-          <button id="uploadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬆ 上传Word文档</button>
-          <input id="uploadTplInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden">
-        </div>
-        <div id="tplListGroup" class="list-group space-y-1 overflow-y-auto max-h-[64vh] pr-1">
-          <div class="text-center text-muted py-6">暂无模板，点击"+新建模板"</div>
-        </div>
-      </div>
-      <!-- 右栏：模板信息 -->
-      <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
-        <div class="text-[11px] text-muted">当前模板：<span id="activeTplName" class="text-teal-700 font-medium">未选择</span></div>
-        <div id="tplInfoCard" class="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-3 text-[11px] leading-relaxed">
-          <div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>
-        </div>
-        <div class="flex justify-end gap-2 mt-1">
-          <button id="downloadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬇ 下载Word文档</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
-      <button class="tpl-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
-    </div>
-  </div>
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[50rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-3">
+ <h3 class="font-serif font-bold text-base text-ink"> 模板库</h3>
+ <button class="tpl-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <!-- 模板标签页 -->
+ <div class="flex gap-1 mb-3 border-b border-rule">
+ <button id="tplTabLesson" class="tpl-tab active px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 border-teal-600 text-ink">教案模板</button>
+ <button id="tplTabPpt" class="tpl-tab px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 border-transparent text-muted hover:text-ink">PPT模板</button>
+ </div>
+ <!-- 教案模板内容 -->
+ <div id="tplLessonContent">
+ <div class="text-[10px] text-muted mb-3 bg-teal-50 border border-teal-200 rounded-lg p-2 leading-relaxed flex items-start justify-between gap-2">
+ <div class="flex-1">
+ 模板是教案的"骨架"——它定义了教案包含哪些内容（如教学目标、教学过程等）。
+ 您可以直接 <strong>下载任意模板为 Word 文档</strong>，在 Word 中编辑后 <strong>上传</strong> 回来，系统会自动识别您的内容结构。
+ </div>
+ <a href="/api/lesson-templates/default/download" target="_blank" class="flex-shrink-0 btn-primary px-2 py-1 rounded text-[11px] whitespace-nowrap">⬇ 下载默认Word模板</a>
+ </div>
+ <div class="modal-body grid grid-cols-2 gap-3 text-xs">
+ <!-- 左栏：模板列表 -->
+ <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
+ <div class="flex gap-2 flex-wrap">
+ <button id="newTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">+ 新建模板</button>
+ <button id="uploadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬆ 上传Word文档</button>
+ <input id="uploadTplInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="hidden">
+ </div>
+ <div id="tplListGroup" class="list-group space-y-1 overflow-y-auto max-h-[64vh] pr-1">
+ <div class="text-center text-muted py-6">暂无模板，点击"+新建模板"</div>
+ </div>
+ </div>
+ <!-- 右栏：模板信息 -->
+ <div class="border border-rule rounded-lg p-2 flex flex-col gap-2 min-h-[380px]">
+ <div class="text-[11px] text-muted">当前模板：<span id="activeTplName" class="text-teal-700 font-medium">未选择</span></div>
+ <div id="tplInfoCard" class="flex-1 overflow-y-auto bg-gray-50 rounded-lg p-3 text-[11px] leading-relaxed">
+ <div class="text-center text-muted py-8">请在左侧选择一个模板查看详情</div>
+ </div>
+ <div class="flex justify-end gap-2 mt-1">
+ <button id="downloadTplBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">⬇ 下载Word文档</button>
+ </div>
+ </div>
+ </div>
+ </div>
+ <!-- PPT模板内容 -->
+ <div id="tplPptContent" class="tpl-hidden">
+ <div class="text-[10px] text-muted mb-3 bg-indigo-50 border border-indigo-200 rounded-lg p-2 leading-relaxed">
+ PPT模板定义了幻灯片的排版风格（字体、配色、边距等）。上传 .pptx 文件后，AI会自动分析并提取模板的排版特征。
+ </div>
+ <div class="border border-rule rounded-lg p-2 min-h-[300px]">
+ <div class="flex items-center justify-between mb-2">
+ <span class="text-xs font-medium text-ink-2">已上传的PPT模板</span>
+ <button id="uploadPptTemplateBtnLib" class="btn-ghost px-2 py-0.5 rounded text-[10px]"> 上传模板</button>
+ </div>
+ <div class="flex flex-wrap gap-1.5" id="pptTemplateGroupLib">
+ <div class="text-center text-muted py-6 w-full text-xs">暂无PPT模板，点击"上传模板"</div>
+ </div>
+ </div>
+ </div>
+ <input type="file" id="uploadPptTemplateLibInput" accept=".pptx" class="hidden">
+ <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+ <button class="tpl-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 教案参数弹窗（生成教案时弹出） ========== -->
+<div id="lessonParamsModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[36rem] max-h-[88vh] overflow-y-auto p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-3">
+ <h3 class="font-serif font-bold text-base text-ink"> 教案参数配置</h3>
+ <button class="lp-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <div class="modal-body">
+ <div class="grid grid-cols-2 gap-3 text-xs">
+ <div>
+ <label class="text-muted block mb-1">课时时长（分钟）</label>
+ <select id="paramTotalMinutes" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="15">15 分钟（微课）</option>
+ <option value="30">30 分钟（短课）</option>
+ <option value="45">45 分钟（标准）</option>
+ <option value="60">60 分钟（双节）</option>
+ <option value="90" selected>90 分钟（大节）</option>
+ <option value="120">120 分钟（半天）</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">导入方式</label>
+ <select id="paramIntroStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="auto" selected>智能匹配</option>
+ <option value="scenario">情境导入</option>
+ <option value="question">问题驱动</option>
+ <option value="case">案例分析</option>
+ <option value="review">温故知新</option>
+ <option value="media">多媒体</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">语言风格</label>
+ <select id="paramLanguageStyle" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="plain" selected>通俗</option>
+ <option value="academic">学术</option>
+ <option value="humorous">幽默</option>
+ <option value="concise">简洁</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">案例密度</label>
+ <select id="paramCaseDensity" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="low">低（少而精）</option>
+ <option value="medium" selected>中（适量）</option>
+ <option value="high">高（密集巩固）</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">互动频率</label>
+ <select id="paramInteractFreq" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="low">低</option>
+ <option value="medium" selected>中</option>
+ <option value="high">高（翻转课堂）</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">难度定位</label>
+ <select id="paramDifficulty" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="lower">略低于学生水平</option>
+ <option value="match" selected>匹配学生水平</option>
+ <option value="higher">拔高拓展</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">作业分层</label>
+ <select id="paramHomeworkLayers" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="0">不分层</option>
+ <option value="2">两层（基础+提升）</option>
+ <option value="3" selected>三层（基础+提升+探究）</option>
+ </select>
+ </div>
+ <div>
+ <label class="text-muted block mb-1">板书设计</label>
+ <select id="paramBoardDesign" class="input-ink w-full px-2 py-1 rounded text-xs">
+ <option value="true" selected>生成</option>
+ <option value="false">不生成</option>
+ </select>
+ </div>
+ </div>
+ </div>
+ <div class="modal-footer flex justify-between gap-2 mt-4 pt-2 border-t border-rule">
+ <button id="lpResetBtn" class="btn-ghost px-3 py-1.5 rounded-md text-sm text-muted">重置为默认</button>
+ <div class="flex gap-2">
+ <button class="lp-close btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="lpConfirmBtn" class="btn-primary px-3 py-1.5 rounded-md text-sm">确认生成教案</button>
+ </div>
+ </div>
+ </div>
 </div>
 
 <!-- ========== 知识图谱模态框 ========== -->
 <div id="knowledgeGraphModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[70] hidden items-center justify-center">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[70rem] max-h-[90vh] overflow-y-auto p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-3">
-      <h3 class="font-serif font-bold text-base text-ink">📊 知识图谱 · <span id="kgCourseName" class="text-teal-700">课程名</span></h3>
-      <button class="kg-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
-    </div>
-    <div class="mb-3 flex items-center gap-2 flex-wrap">
-      <span class="text-xs text-muted" id="kgStats">加载中...</span>
-      <button id="kgExportXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">📥 导出XLSX</button>
-      <button id="kgRefreshBtn" class="btn-ghost px-2 py-1 rounded text-[11px]">🔄 刷新</button>
-    </div>
-    <div class="modal-body">
-      <!-- 图形化关系视图 (借鉴 leo-live-book 的 Cytoscape 渲染) -->
-      <div class="mb-3">
-        <div class="flex items-center justify-between mb-1">
-          <h4 class="text-xs font-semibold text-ink">知识关系图</h4>
-          <div class="flex items-center gap-1">
-            <span class="text-[10px] text-muted mr-2">箭头方向表示知识流向</span>
-            <span class="text-[10px] text-muted mr-1">关系:</span>
-            <span class="text-[10px]" style="color:#4a9d8f;margin-right:8px;">━ 依赖</span>
-            <span class="text-[10px]" style="color:#2196F3;margin-right:8px;">┅ 支撑</span>
-            <span class="text-[10px]" style="color:#FF9800;margin-right:8px;">┅ 组成</span>
-            <span class="text-[10px]" style="color:#9C27B0;margin-right:8px;">┅ 对比</span>
-            <span class="text-[10px]" style="color:#F44336;margin-right:8px;">┅ 应用</span>
-            <button id="kgZoomIn" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="放大">＋</button>
-            <button id="kgZoomOut" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="缩小">－</button>
-            <button id="kgFit" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="适应屏幕">⊡</button>
-            <span id="kgZoomIndicator" class="text-[10px] text-muted ml-1">100%</span>
-          </div>
-        </div>
-        <div id="kgRelationView" class="bg-gray-50 border border-rule rounded-lg p-1 max-h-64 overflow-hidden relative" style="min-height: 240px;">
-          <!-- Cytoscape 渲染容器 -->
-          <div id="kgCytoscape" class="w-full h-full" style="height: 240px;"></div>
-          <div id="kgEmptyHint" class="absolute inset-0 flex items-center justify-center text-muted text-xs">暂无知识点数据</div>
-        </div>
-        <div class="mt-1 text-[10px] text-muted">提示：可拖拽节点、滚轮缩放、点击节点查看详情</div>
-      </div>
-      <!-- 表格视图 -->
-      <div>
-        <div class="flex items-center justify-between mb-1">
-          <h4 class="text-xs font-semibold text-ink">知识点明细表</h4>
-          <span class="text-[10px] text-muted">共 <span id="kgTableCount">0</span> 个知识点</span>
-        </div>
-        <div class="overflow-x-auto border border-rule rounded-lg">
-          <table class="w-full text-[11px]">
-            <thead class="bg-gray-100">
-              <tr>
-                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">#</th>
-                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">知识点名称</th>
-                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">层级</th>
-                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">标签</th>
-                <th class="px-2 py-1.5 text-left font-medium text-muted border-r">前置知识点</th>
-                <th class="px-2 py-1.5 text-left font-medium text-muted">定义/说明</th>
-              </tr>
-            </thead>
-            <tbody id="kgTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
-      <button class="kg-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
-    </div>
-  </div>
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[70rem] max-h-[90vh] overflow-y-auto p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-3">
+ <h3 class="font-serif font-bold text-base text-ink"> 知识图谱 · <span id="kgCourseName" class="text-teal-700">课程名</span></h3>
+ <button class="kg-close text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <div class="mb-3 flex items-center gap-2 flex-wrap">
+ <span class="text-xs text-muted" id="kgStats">加载中...</span>
+ <button id="kgExportXlsxBtn" class="btn-ghost px-2 py-1 rounded text-[11px]"> 导出XLSX</button>
+ <button id="kgRefreshBtn" class="btn-ghost px-2 py-1 rounded text-[11px]"> 刷新</button>
+ <button id="kgEditModeBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="切换编辑模式"> 编辑模式</button>
+ <button id="kgFullscreenBtn" class="btn-ghost px-2 py-1 rounded text-[11px]" title="全屏查看知识图谱"> 全屏</button>
+ </div>
+ <div class="modal-body">
+ <!-- 图形化关系视图 (借鉴 leo-live-book 的 Cytoscape 渲染) -->
+ <div class="mb-3">
+ <div class="flex items-center justify-between mb-1">
+ <h4 class="text-xs font-semibold text-ink">知识关系图</h4>
+ <div class="flex items-center gap-1">
+ <span class="text-[10px] text-muted mr-2">箭头方向表示知识流向</span>
+ <span class="text-[10px] text-muted mr-1">关系:</span>
+ <span class="text-[10px]" style="color:#4a9d8f;margin-right:8px;">━ 依赖</span>
+ <span class="text-[10px]" style="color:#2196F3;margin-right:8px;">┅ 支撑</span>
+ <span class="text-[10px]" style="color:#FF9800;margin-right:8px;">┅ 组成</span>
+ <span class="text-[10px]" style="color:#9C27B0;margin-right:8px;">┅ 对比</span>
+ <span class="text-[10px]" style="color:#F44336;margin-right:8px;">┅ 应用</span>
+ <button id="kgZoomIn" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="放大">＋</button>
+ <button id="kgZoomOut" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="缩小">－</button>
+ <button id="kgFit" class="btn-ghost px-1.5 py-0.5 rounded text-[11px]" title="适应屏幕">⊡</button>
+ <span id="kgZoomIndicator" class="text-[10px] text-muted ml-1">100%</span>
+ </div>
+ </div>
+ <div id="kgRelationView" class="bg-gray-50 border border-rule rounded-lg p-1 max-h-64 overflow-hidden relative" style="min-height: 240px;">
+ <!-- Cytoscape 渲染容器 -->
+ <div id="kgCytoscape" class="w-full h-full" style="height: 240px;"></div>
+ <div id="kgEmptyHint" class="absolute inset-0 flex items-center justify-center text-muted text-xs">暂无知识点数据</div>
+ </div>
+ <div class="mt-1 text-[10px] text-muted">提示：可拖拽节点、滚轮缩放、点击节点查看详情</div>
+ </div>
+ <!-- 表格视图 -->
+ <div>
+ <div class="flex items-center justify-between mb-1">
+ <h4 class="text-xs font-semibold text-ink">知识点明细表</h4>
+ <span class="text-[10px] text-muted">共 <span id="kgTableCount">0</span> 个知识点</span>
+ </div>
+ <div class="overflow-x-auto border border-rule rounded-lg">
+ <table class="w-full text-[11px]">
+ <thead class="bg-gray-100">
+ <tr>
+ <th class="px-2 py-1.5 text-left font-medium text-muted border-r">#</th>
+ <th class="px-2 py-1.5 text-left font-medium text-muted border-r">知识点名称</th>
+ <th class="px-2 py-1.5 text-left font-medium text-muted border-r">层级</th>
+ <th class="px-2 py-1.5 text-left font-medium text-muted border-r">标签</th>
+ <th class="px-2 py-1.5 text-left font-medium text-muted border-r">前置知识点</th>
+ <th class="px-2 py-1.5 text-left font-medium text-muted">定义/说明</th>
+ </tr>
+ </thead>
+ <tbody id="kgTableBody"></tbody>
+ </table>
+ </div>
+ </div>
+ </div>
+ <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+ <button class="kg-close btn-ghost px-3 py-1.5 rounded-md text-sm">关闭</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 知识点关系编辑弹窗 ========== -->
+<div id="kpRelationModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[75] hidden items-center justify-center" onclick="if(event.target===this)closeKpRelationEditor()">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[36rem] max-h-[85vh] overflow-y-auto p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-3">
+ <h3 class="font-serif font-bold text-base text-ink"> 知识点关联关系 · <span id="kpRelationKpName" class="text-teal-700">知识点名</span></h3>
+ <button onclick="closeKpRelationEditor()" class="text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+ <div class="space-y-4">
+ <div>
+ <h4 class="text-xs font-semibold text-ink mb-2 flex items-center gap-1">
+ <span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>
+ 前置知识点（学该知识点前需要掌握）
+ </h4>
+ <div id="kpRelationPrereqs" class="space-y-1 mb-2">
+ <div class="text-xs text-muted text-center py-2">暂无前置知识点</div>
+ </div>
+ <div class="flex items-center gap-2">
+ <input id="kpRelationPrereqInput" type="text" class="flex-1 text-xs border border-rule rounded px-2 py-1.5 bg-white focus:outline-none focus:border-teal-400" placeholder="搜索知识点名称添加为前置..." autocomplete="off">
+ <button id="kpRelationPrereqAddBtn" class="btn-primary px-2 py-1.5 rounded text-xs whitespace-nowrap disabled:opacity-40" disabled>添加</button>
+ </div>
+ <div id="kpRelationPrereqSuggestions" class="mt-1 max-h-32 overflow-y-auto hidden border border-rule rounded bg-white shadow-sm"></div>
+ </div>
+ <div class="border-t border-rule"></div>
+ <div>
+ <h4 class="text-xs font-semibold text-ink mb-2 flex items-center gap-1">
+ <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+ 语义关联关系
+ </h4>
+ <div id="kpRelationRels" class="space-y-1 mb-2">
+ <div class="text-xs text-muted text-center py-2">暂无关联关系</div>
+ </div>
+ <div class="flex items-center gap-2">
+ <input id="kpRelationRelInput" type="text" class="flex-1 text-xs border border-rule rounded px-2 py-1.5 bg-white focus:outline-none focus:border-teal-400" placeholder="搜索知识点..." autocomplete="off">
+ <select id="kpRelationRelType" class="text-xs border border-rule rounded px-2 py-1.5 bg-white focus:outline-none focus:border-teal-400">
+ <option value="依赖">依赖</option>
+ <option value="支撑">支撑</option>
+ <option value="组成">组成</option>
+ <option value="对比">对比</option>
+ <option value="应用">应用</option>
+ </select>
+ <button id="kpRelationRelAddBtn" class="btn-primary px-2 py-1.5 rounded text-xs whitespace-nowrap disabled:opacity-40" disabled>添加</button>
+ </div>
+ <div id="kpRelationRelSuggestions" class="mt-1 max-h-32 overflow-y-auto hidden border border-rule rounded bg-white shadow-sm"></div>
+ </div>
+ </div>
+ <div class="modal-footer flex justify-end gap-2 mt-4 pt-2 border-t border-rule">
+ <button onclick="closeKpRelationEditor()" class="btn-ghost px-3 py-1.5 rounded-md text-sm">取消</button>
+ <button id="kpRelationSaveBtn" class="btn-primary px-4 py-1.5 rounded-md text-sm">保存关系</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 教学日历弹窗 ========== -->
+<div id="scheduleModal" class="modal-mask fixed inset-0 bg-ink/30 backdrop-blur-sm z-[75] hidden items-center justify-center" onclick="if(event.target===this)closeScheduleModal()">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[64rem] max-h-[90vh] overflow-y-auto p-5 fade-in">
+ <div class="flex items-center justify-between mb-3">
+ <h3 class="font-serif font-bold text-base text-ink"> 教学日历 · <span id="scheduleCourseName" class="text-teal-700">课程名</span></h3>
+ <button onclick="closeScheduleModal()" class="text-muted hover:text-teal-700 text-lg leading-none" title="关闭">×</button>
+ </div>
+
+ <!-- 周导航 -->
+ <div class="flex items-center justify-between mb-3">
+ <div class="flex items-center gap-2">
+ <button id="schedulePrevWeek" class="btn-ghost px-2 py-1 rounded text-xs">‹ 上周</button>
+ <span id="scheduleWeekLabel" class="text-sm font-semibold text-ink min-w-[7rem] text-center">第 1 周 / 共 12 周</span>
+ <button id="scheduleNextWeek" class="btn-ghost px-2 py-1 rounded text-xs">下周 ›</button>
+ <select id="scheduleWeekJump" class="text-xs border border-rule rounded px-2 py-1 bg-white text-ink hidden"></select>
+ </div>
+ <div class="flex items-center gap-2">
+ <button id="scheduleAutoPlanBtn" class="btn-ghost px-2 py-1 rounded text-xs border border-teal-200 text-teal-700 hover:bg-teal-50"> 自动排课</button>
+ <button id="scheduleRefreshBtn" class="btn-ghost px-2 py-1 rounded text-xs"> 刷新</button>
+ </div>
+ </div>
+
+ <!-- 日历网格 -->
+ <div id="scheduleGrid" class="border border-rule rounded-lg overflow-hidden">
+ <div class="grid grid-cols-5 bg-teal-50 border-b border-rule">
+ <div class="px-2 py-1.5 text-[10px] font-semibold text-muted text-center border-r border-rule">周一</div>
+ <div class="px-2 py-1.5 text-[10px] font-semibold text-muted text-center border-r border-rule">周二</div>
+ <div class="px-2 py-1.5 text-[10px] font-semibold text-muted text-center border-r border-rule">周三</div>
+ <div class="px-2 py-1.5 text-[10px] font-semibold text-muted text-center border-r border-rule">周四</div>
+ <div class="px-2 py-1.5 text-[10px] font-semibold text-muted text-center">周五</div>
+ </div>
+ <div id="scheduleGridBody" class="divide-y divide-rule">
+ <div class="text-xs text-muted text-center py-8">加载中...</div>
+ </div>
+ </div>
+
+ <!-- 未安排内容 -->
+ <div class="mt-3 border-t border-rule pt-2">
+ <div class="flex items-center justify-between mb-1">
+ <h4 class="text-[10px] font-semibold text-muted">未安排内容</h4>
+ <span id="scheduleUnscheduledCount" class="text-[10px] text-muted"></span>
+ </div>
+ <div id="scheduleUnscheduled" class="flex flex-wrap gap-1 min-h-[2rem]">
+ <div class="text-xs text-muted">暂无未安排内容</div>
+ </div>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 协作模态框（分享/评论/审批） ========== -->
+<div id="collaborateModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)UI.Modal.close('collaborateModal')">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[36rem] max-h-[80vh] flex flex-col fade-in">
+ <div class="modal-header flex items-center justify-between px-5 py-3 border-b border-rule flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> 多人协作备课</h3>
+ <button onclick="UI.Modal.close('collaborateModal')" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+ </div>
+
+ <!-- 标签页 -->
+ <div class="flex border-b border-rule px-5 flex-shrink-0">
+ <button class="collab-tab px-4 py-2 text-xs font-medium border-b-2 border-teal-500 text-teal-700" data-tab="share" onclick="switchCollabTab('share')"> 分享</button>
+ <button class="collab-tab px-4 py-2 text-xs font-medium text-muted hover:text-ink border-b-2 border-transparent" data-tab="comment" onclick="switchCollabTab('comment')"> 评论</button>
+ <button class="collab-tab px-4 py-2 text-xs font-medium text-muted hover:text-ink border-b-2 border-transparent" data-tab="approval" onclick="switchCollabTab('approval')"> 审批</button>
+ </div>
+
+ <!-- 分享面板 -->
+ <div id="collabSharePanel" class="flex-1 overflow-y-auto px-5 py-4">
+ <div class="flex items-center gap-2 mb-3">
+ <button id="generateShareCodeBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap">生成分享码</button>
+ <span class="text-[10px] text-muted">分享码仅供协作者只读查看教案内容</span>
+ </div>
+ <div id="shareCodeList" class="space-y-2">
+ <div class="text-xs text-muted text-center py-4">暂无分享码，点击上方按钮生成</div>
+ </div>
+ <div class="mt-3 pt-3 border-t border-rule">
+ <label class="text-xs text-muted block mb-1">通过分享码查看教案</label>
+ <div class="flex items-center gap-2">
+ <input id="sharedCodeInput" type="text" class="flex-1 text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="输入8位分享码" maxlength="8" style="text-transform: uppercase;">
+ <button id="viewSharedLessonBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 whitespace-nowrap">查看共享教案</button>
+ </div>
+ <div id="sharedLessonResult" class="mt-2 hidden">
+ <div class="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs">
+ <div class="font-medium text-teal-800 mb-1" id="sharedLessonTitle"></div>
+ <div class="text-teal-600" id="sharedLessonContent"></div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- 评论面板 -->
+ <div id="collabCommentPanel" class="flex-1 overflow-y-auto px-5 py-4 hidden">
+ <div id="commentList" class="space-y-3 mb-4">
+ <div class="text-xs text-muted text-center py-4">暂无评论</div>
+ </div>
+ <div class="border-t border-rule pt-3 flex-shrink-0">
+ <div class="flex items-center gap-2 mb-2">
+ <input id="commentAuthorInput" type="text" class="w-24 text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="您的称呼" maxlength="50">
+ <textarea id="commentContentInput" class="flex-1 text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400 resize-none" rows="2" placeholder="输入评论内容..." maxlength="1000"></textarea>
+ </div>
+ <div class="flex justify-end">
+ <button id="submitCommentBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs">发送评论</button>
+ </div>
+ </div>
+ </div>
+
+ <!-- 审批面板 -->
+ <div id="collabApprovalPanel" class="flex-1 overflow-y-auto px-5 py-4 hidden">
+ <div id="approvalStatusDisplay" class="mb-4">
+ <div class="flex items-center gap-2 mb-2">
+ <span class="text-xs text-muted">审批状态：</span>
+ <span id="approvalStatusBadge" class="badge badge-draft">草稿</span>
+ </div>
+ <div id="approvalMeta" class="text-xs text-muted space-y-1"></div>
+ </div>
+ <div id="approvalActions" class="border-t border-rule pt-3 space-y-3">
+ <!-- 提交审批 -->
+ <div id="approvalSubmitArea" class="hidden">
+ <div class="flex items-center gap-2">
+ <input id="approvalSubmitterInput" type="text" class="w-32 text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="提交人姓名" maxlength="50">
+ <button id="submitApprovalBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs">提交审批</button>
+ </div>
+ </div>
+ <!-- 审批操作 -->
+ <div id="approvalReviewArea" class="hidden">
+ <div class="flex items-center gap-2 mb-2">
+ <input id="approvalReviewerInput" type="text" class="w-32 text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="审批人姓名" maxlength="50">
+ </div>
+ <textarea id="approvalReviewCommentInput" class="w-full text-xs border border-rule rounded px-2 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400 resize-none" rows="2" placeholder="审批意见（可选）" maxlength="500"></textarea>
+ <div class="flex items-center gap-2 mt-2">
+ <button id="approveBtn" class="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs hover:bg-green-700"> 通过</button>
+ <button id="rejectBtn" class="bg-red-500 text-white px-3 py-1.5 rounded-md text-xs hover:bg-red-600"> 驳回</button>
+ </div>
+ </div>
+ </div>
+ <div id="approvalResultInfo" class="hidden mt-3 p-3 rounded-lg text-xs"></div>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 教学资源市场 ========== -->
+<div id="marketModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)UI.Modal.close('marketModal')">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[42rem] max-h-[85vh] flex flex-col fade-in">
+ <div class="modal-header flex items-center justify-between px-5 py-3 border-b border-rule flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> 教学资源市场</h3>
+ <button onclick="UI.Modal.close('marketModal')" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+ </div>
+
+ <!-- 搜索与分类 -->
+ <div class="flex-shrink-0 px-5 py-3 border-b border-rule space-y-2">
+ <div class="flex items-center gap-2">
+ <input id="marketSearchInput" type="text" class="flex-1 text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="搜索资源标题、描述、标签..." maxlength="100">
+ <button id="marketSearchBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs whitespace-nowrap">搜索</button>
+ <button id="marketUploadBtn" class="btn-ghost px-3 py-1.5 rounded-md text-xs border border-teal-200 text-teal-700 hover:bg-teal-50 whitespace-nowrap">上传资源</button>
+ </div>
+ <div class="flex items-center gap-1" id="marketCategoryTabs">
+ <button class="market-tab px-3 py-1 text-xs rounded-full border border-teal-200 text-teal-700 bg-teal-50 font-medium" data-category="">全部</button>
+ <button class="market-tab px-3 py-1 text-xs rounded-full border border-rule text-muted hover:text-ink hover:border-teal-200" data-category="template"> 模板</button>
+ <button class="market-tab px-3 py-1 text-xs rounded-full border border-rule text-muted hover:text-ink hover:border-teal-200" data-category="lesson"> 教案</button>
+ <button class="market-tab px-3 py-1 text-xs rounded-full border border-rule text-muted hover:text-ink hover:border-teal-200" data-category="courseware"> 课件</button>
+ </div>
+ </div>
+
+ <!-- 资源列表 -->
+ <div id="marketResourceList" class="flex-1 overflow-y-auto px-5 py-3 space-y-2">
+ <div class="text-xs text-muted text-center py-8">加载中...</div>
+ </div>
+
+ <!-- 分页 -->
+ <div class="flex-shrink-0 px-5 py-2 border-t border-rule flex items-center justify-between">
+ <span id="marketPageInfo" class="text-[10px] text-muted"></span>
+ <div class="flex items-center gap-2">
+ <button id="marketPrevPage" class="btn-ghost px-2.5 py-1 rounded text-xs border border-rule disabled:opacity-30 disabled:cursor-not-allowed" disabled>上一页</button>
+ <button id="marketNextPage" class="btn-ghost px-2.5 py-1 rounded text-xs border border-rule disabled:opacity-30 disabled:cursor-not-allowed" disabled>下一页</button>
+ </div>
+ </div>
+ </div>
+</div>
+
+<!-- ========== 上传资源弹窗 ========== -->
+<div id="marketUploadModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[90] hidden items-center justify-center" onclick="if(event.target===this)closeMarketUpload()">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[32rem] max-h-[80vh] flex flex-col fade-in">
+ <div class="modal-header flex items-center justify-between px-5 py-3 border-b border-rule flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> 上传教学资源</h3>
+ <button onclick="closeMarketUpload()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+ </div>
+ <div class="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+ <div>
+ <label class="text-xs text-muted block mb-1">资源标题 *</label>
+ <input id="marketUploadTitle" type="text" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="输入资源标题" maxlength="200">
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">资源描述</label>
+ <textarea id="marketUploadDesc" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400 resize-none" rows="2" placeholder="简要描述资源内容" maxlength="500"></textarea>
+ </div>
+ <div class="flex items-center gap-3">
+ <div class="flex-1">
+ <label class="text-xs text-muted block mb-1">分类 *</label>
+ <select id="marketUploadCategory" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400">
+ <option value="template">模板</option>
+ <option value="lesson">教案</option>
+ <option value="courseware">课件</option>
+ </select>
+ </div>
+ <div class="flex-1">
+ <label class="text-xs text-muted block mb-1">子分类</label>
+ <input id="marketUploadType" type="text" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="如：完整教案/PPT模板" maxlength="50">
+ </div>
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">作者 *</label>
+ <input id="marketUploadAuthor" type="text" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="您的姓名或昵称" maxlength="100">
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">标签（逗号分隔）</label>
+ <input id="marketUploadTags" type="text" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400" placeholder="如：高中数学,函数,导数" maxlength="200">
+ </div>
+ <div>
+ <label class="text-xs text-muted block mb-1">资源内容（JSON格式，将随导入一起使用）</label>
+ <textarea id="marketUploadContent" class="w-full text-xs border border-rule rounded px-2.5 py-1.5 bg-white/70 focus:outline-none focus:border-teal-400 font-mono resize-none" rows="4" placeholder='{"key": "value"}'></textarea>
+ </div>
+ <div class="text-[10px] text-muted">* 为必填项</div>
+ </div>
+ <div class="flex-shrink-0 px-5 py-3 border-t border-rule flex items-center justify-end gap-2">
+ <button onclick="closeMarketUpload()" class="btn-ghost px-3 py-1.5 rounded-md text-xs">取消</button>
+ <button id="marketUploadSubmit" class="btn-primary px-3 py-1.5 rounded-md text-xs">上传</button>
+ </div>
+ </div>
+</div>
+
+<!-- ========== AI 智能体工作流编排 ========== -->
+<div id="workflowModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)UI.Modal.close('workflowModal')">
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[90vw] max-w-[1200px] h-[85vh] flex flex-col fade-in">
+ <div class="modal-header flex items-center justify-between px-5 py-3 border-b border-rule flex-shrink-0">
+ <h3 class="font-serif font-bold text-base text-ink"> AI 智能体工作流编排</h3>
+ <div class="flex items-center gap-2">
+ <button id="workflowSaveBtn" class="btn-primary px-2.5 py-1 rounded-md text-xs hidden">保存工作流</button>
+ <button onclick="UI.Modal.close('workflowModal')" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+ </div>
+ </div>
+ <div class="flex-1 flex overflow-hidden">
+ <div class="w-56 flex-shrink-0 border-r border-rule overflow-y-auto p-3 space-y-2">
+ <div class="text-xs font-semibold text-muted mb-2"> Agent 节点</div>
+ <div id="workflowNodePalette" class="space-y-1.5"></div>
+ <div class="text-xs font-semibold text-muted mt-4 mb-2"> 我的工作流</div>
+ <div id="workflowListPanel" class="space-y-1"></div>
+ <button id="workflowNewBtn" class="btn-ghost w-full px-2 py-1.5 rounded-md text-xs text-center border border-dashed border-rule hover:border-teal-300 mt-2">+ 新建工作流</button>
+ </div>
+ <div class="flex-1 flex flex-col">
+ <div class="flex items-center gap-2 px-4 py-2 border-b border-rule bg-gray-50/50 flex-shrink-0">
+ <input id="workflowNameInput" type="text" class="flex-1 text-sm font-semibold border-0 bg-transparent focus:outline-none" placeholder="输入工作流名称..." value="未命名工作流">
+ <button id="workflowRunBtn" class="btn-primary px-3 py-1.5 rounded-md text-xs" disabled> 执行</button>
+ <button id="workflowClearBtn" class="btn-ghost px-2 py-1.5 rounded-md text-xs text-muted">清空</button>
+ </div>
+ <div class="flex-1 relative overflow-hidden">
+ <svg id="workflowCanvas" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index:0"></svg>
+ <div id="workflowCanvasArea" class="absolute inset-0 overflow-auto" style="z-index:1">
+ <div id="workflowCanvasInner" class="relative" style="min-width:2000px;min-height:1500px">
+ <div id="workflowCanvasDropZone" class="absolute inset-0"></div>
+ </div>
+ </div>
+ <div id="workflowCanvasEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-muted pointer-events-none">
+ <div class="text-4xl mb-2"></div>
+ <div class="text-sm">从左侧拖拽 Agent 节点到画布，构建工作流</div>
+ <div class="text-xs mt-1">连接线表示数据流向，上一个节点的输出可作为下一个节点的输入</div>
+ </div>
+ </div>
+ </div>
+ <div id="workflowConfigPanel" class="w-72 flex-shrink-0 border-l border-rule overflow-y-auto p-3 hidden">
+ <div class="text-xs font-semibold text-muted mb-3"> 步骤配置</div>
+ <div id="workflowConfigContent"></div>
+ </div>
+ </div>
+ <div id="workflowExecBar" class="hidden flex-shrink-0 border-t border-rule p-2 bg-gray-50/80 flex items-center gap-3 text-xs text-muted"></div>
+ </div>
 </div>
 
 <!-- ========== G4: 操作失败对话框 ========== -->
 <div id="failureModal" class="modal-mask fixed inset-0 bg-ink/40 backdrop-blur-sm z-[80] hidden items-center justify-center" onclick="if(event.target===this)closeOperationFailure()">
-  <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
-    <div class="modal-header flex items-center justify-between mb-2">
-      <div class="flex items-center gap-2">
-        <span class="text-2xl">⚠</span>
-        <h3 class="font-serif font-bold text-base text-ochre">操作失败</h3>
-      </div>
-      <button onclick="closeOperationFailure()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
-    </div>
-    <div class="modal-body mb-3">
-      <div id="failureMessage" class="text-sm text-ink-2 leading-relaxed mb-2"></div>
-      <div id="failureSolution" class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2"></div>
-      <div id="failureCode" class="text-[10px] text-muted font-mono break-all"></div>
-    </div>
-    <div class="modal-footer flex flex-wrap gap-2">
-      <button id="failRetryBtn" class="btn-primary px-2.5 py-1.5 rounded-md text-xs">重试</button>
-      <button id="failLowerBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">降参重试</button>
-      <button id="failTplBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">用模板快速填充</button>
-      <button id="failDraftBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">保存当前草稿</button>
-      <button id="failHelpBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">打开帮助</button>
-      <button id="failExitBtn" onclick="closeOperationFailure()" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 hover:bg-red-50">退出</button>
-    </div>
-  </div>
+ <div class="modal-panel bg-white rounded-xl shadow-md-soft w-[28rem] p-5 fade-in">
+ <div class="modal-header flex items-center justify-between mb-2">
+ <div class="flex items-center gap-2">
+ <span class="text-2xl"></span>
+ <h3 class="font-serif font-bold text-base text-ochre">操作失败</h3>
+ </div>
+ <button onclick="closeOperationFailure()" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-muted hover:text-ink transition-colors text-lg leading-none">&times;</button>
+ </div>
+ <div class="modal-body mb-3">
+ <div id="failureMessage" class="text-sm text-ink-2 leading-relaxed mb-2"></div>
+ <div id="failureSolution" class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mb-2"></div>
+ <div id="failureCode" class="text-[10px] text-muted font-mono break-all"></div>
+ </div>
+ <div class="modal-footer flex flex-wrap gap-2">
+ <button id="failRetryBtn" class="btn-primary px-2.5 py-1.5 rounded-md text-xs">重试</button>
+ <button id="failLowerBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">降参重试</button>
+ <button id="failTplBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">用模板快速填充</button>
+ <button id="failDraftBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">保存当前草稿</button>
+ <button id="failHelpBtn" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs">打开帮助</button>
+ <button id="failExitBtn" onclick="closeOperationFailure()" class="btn-ghost px-2.5 py-1.5 rounded-md text-xs text-red-600 border border-red-200 hover:bg-red-50">退出</button>
+ </div>
+ </div>
 </div>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/components.js?v=20260832"></script>
+<script src="/static/js/app.js?v=20260832"></script>
+<script>
+if ('serviceWorker' in navigator) {
+ navigator.serviceWorker.register('/sw.js').catch(function(err) {
+ console.warn('Service Worker 注册失败:', err);
+});
+}
+</script>
 </body>
 </html>
+

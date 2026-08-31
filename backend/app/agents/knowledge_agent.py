@@ -24,19 +24,28 @@ async def extract_knowledge(
     chapter: str,
     text: str,
     subject: Optional[str] = None,
+    chapter_framework: Optional[list[str]] = None,
 ) -> KnowledgeExtractionResult:
     """从教材文本中提取结构化知识点
 
     Args:
         subject: 学科标识(如 math/chinese/english/physics 等), 用于注入学科领域规则
+        chapter_framework: 预设章节框架，如 ["第一章 绪论", "第二章 基本原理"]
     """
     llm = get_llm()
     max_input = 12000
     truncated = text[:max_input] if len(text) > max_input else text
 
+    framework_hint = ""
+    if chapter_framework and isinstance(chapter_framework, list):
+        framework_hint = "\n\n===== 预设章节框架 =====\n本教材的章节结构如下（用户预设）：\n"
+        for i, ch_name in enumerate(chapter_framework):
+            framework_hint += f"  {i+1}. {ch_name}\n"
+        framework_hint += "请根据这个框架来识别和组织知识点，将知识点归类到对应的章节中。\n===== 章节框架结束 =====\n"
+
     user_prompt = KNOWLEDGE_USER_TEMPLATE.format(
         course_name=course_name,
-        chapter=chapter,
+        chapter=chapter + framework_hint,
         text=truncated,
     )
 
@@ -60,7 +69,6 @@ async def extract_knowledge(
                     "name": str(p.get("name", "")).strip(),
                     "layer": p.get("layer", "core") if p.get("layer") in ("basic", "core", "extension") else "core",
                     "definition": str(p.get("definition", "")).strip(),
-                    "source_pages": str(p.get("source_pages", "")).strip(),
                     "importance": int(p.get("importance", 3)),
                     "difficulty": int(p.get("difficulty", 3)),
                     "is_key_point": bool(p.get("is_key_point", False)),
@@ -89,6 +97,7 @@ async def chunked_extract_knowledge(
     progress_callback=None,
     subject: Optional[str] = None,
     max_concurrency: int = 3,
+    chapter_framework: Optional[list[str]] = None,
 ) -> KnowledgeExtractionResult:
     """分段并行提取知识点：将长文本智能分割后并发提取，合并去重
 
@@ -102,7 +111,7 @@ async def chunked_extract_knowledge(
         max_concurrency: 最大并行数（默认3，避免 LLM 限流）
     """
     if len(text) <= chunk_size:
-        result = await extract_knowledge(course_name, chapter, text, subject=subject)
+        result = await extract_knowledge(course_name, chapter, text, subject=subject, chapter_framework=chapter_framework)
         if progress_callback:
             pts = [p.model_dump() if hasattr(p, 'model_dump') else p for p in (result.points or [])]
             await progress_callback(1, 1, pts)
@@ -116,7 +125,7 @@ async def chunked_extract_knowledge(
     async def _process_chunk(idx: int, chunk: str) -> tuple[int, KnowledgeExtractionResult]:
         async with semaphore:
             chunk_label = f"{chapter} (第{idx+1}段/共{len(chunks)}段)"
-            return idx, await extract_knowledge(course_name, chunk_label, chunk, subject=subject)
+            return idx, await extract_knowledge(course_name, chunk_label, chunk, subject=subject, chapter_framework=chapter_framework)
 
     tasks = [_process_chunk(i, c) for i, c in enumerate(chunks)]
     all_points: list[dict] = []

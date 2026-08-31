@@ -152,13 +152,33 @@ app.include_router(api_router)
 async def index(request: Request):
     """主页面 - 对话驱动型UI"""
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "app_title": "备课助手 · 智能备课伴侣",
             "model": settings.llm_model,
         },
     )
+
+
+@app.get("/mobile", response_class=HTMLResponse)
+async def mobile_page(request: Request):
+    """移动端独立 H5 页面"""
+    return templates.TemplateResponse(
+        request,
+        "mobile.html",
+        {
+            "app_title": "备课助手",
+            "model": settings.llm_model,
+        },
+    )
+
+
+@app.get("/sw.js")
+async def service_worker():
+    """Serve service worker from root scope"""
+    sw_path = STATIC_DIR / "sw.js"
+    return Response(sw_path.read_text(encoding="utf-8"), media_type="application/javascript")
 
 
 @app.get("/favicon.ico")
